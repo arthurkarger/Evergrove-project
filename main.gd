@@ -50,6 +50,11 @@ func _ready():
 	e.ambient_light_color = Color("e5dfd0")
 	e.ambient_light_energy = 0.48
 	e.glow_enabled = false
+	e.glow_bloom = 0.0
+	e.glow_hdr_threshold = 0.95
+	e.glow_hdr_scale = 0.45
+	e.glow_intensity = 0.24
+	e.glow_blend_mode = Environment.GLOW_BLEND_MODE_ADDITIVE
 	sky_dome.sky_material = sky_paint
 	sky_dome.radiance_size = Sky.RADIANCE_SIZE_128
 	sky_paint.sun_angle_max = 6.0
@@ -330,6 +335,7 @@ func update_solar_lighting(phase: float) -> void:
 		sky_paint.sky_horizon_color = sky.background_color
 		sky_paint.ground_horizon_color = sky.background_color
 		sky_paint.ground_bottom_color = Color("41534d").lerp(Color("829484"),daylight)
+	sky.glow_enabled = quality_level==3 and life.room<0 and daylight<0.22 and DisplayServer.get_name()!="headless"
 	village.update_lamps(daylight)
 	village.update_water_light(sky.background_color,daylight,phase)
 	if grade_material != null:
@@ -417,7 +423,9 @@ func apply_graphics(level: int) -> void:
 		RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
 	sky_dome.sky_material = physical_sky if quality_level==3 else sky_paint
-	sky.glow_enabled = false
+	sky.tonemap_mode = Environment.TONE_MAPPER_FILMIC if quality_level>=2 else Environment.TONE_MAPPER_LINEAR
+	sky.tonemap_white = 1.6
+	sky.tonemap_exposure = 1.02
 	village.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
 	if grade_overlay != null:
