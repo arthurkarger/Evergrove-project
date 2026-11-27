@@ -1,6 +1,7 @@
 extends CanvasLayer
 
 signal home_requested
+signal craft_requested
 signal use_requested
 signal picked(slot: int)
 signal bag_toggled(open: bool)
@@ -35,6 +36,7 @@ var notice_time := 0.0
 var hint := Label.new()
 var held_label := Label.new()
 var build_button := Button.new()
+var craft_button := Button.new()
 var run_button := Button.new()
 
 func panel_style(fill: String,border: String) -> StyleBoxFlat:
@@ -122,6 +124,14 @@ func build(model) -> void:
 	top.add_child(build_button)
 	Style.center_icon(build_button,preload("res://assets/art/icons/build.svg"),34)
 	build_button.pressed.connect(home_requested.emit)
+	craft_button.name="CraftButton"
+	craft_button.tooltip_text="Crafting · C"
+	craft_button.custom_minimum_size=Vector2(48,42)
+	decorate(craft_button)
+	craft_button.focus_mode=Control.FOCUS_NONE
+	top.add_child(craft_button)
+	Style.center_icon(craft_button,preload("res://assets/art/icons/craft.svg"),34)
+	craft_button.pressed.connect(craft_requested.emit)
 	var info := PanelContainer.new()
 	info.add_theme_stylebox_override("panel",Style.box(Color("fff2ded9"),Color.TRANSPARENT,14,7,0))
 	top.add_child(info)

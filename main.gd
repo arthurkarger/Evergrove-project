@@ -126,6 +126,7 @@ func _ready():
 	add_child(home_ui)
 	home_ui.setup(self)
 	hud.home_requested.connect(open_construction)
+	hud.craft_requested.connect(open_crafting)
 	add_child(village_menu)
 	village_menu.build(self)
 	village_menu.closed.connect(close_social)
@@ -202,6 +203,10 @@ func toggle_bag(open: bool) -> void:
 	if not open:
 		save_game()
 		update_world_ui()
+
+func open_crafting() -> void:
+	if graphics.shade.visible or home_ui.menu.visible or site.active or hud.shade.visible or village_menu.shade.visible: return
+	home_ui.open("craft")
 
 func open_construction() -> void:
 	if life.room not in [-1,6] or graphics.shade.visible or home_ui.menu.visible or site.active or hud.shade.visible or village_menu.shade.visible: return
@@ -303,6 +308,8 @@ func _input(event: InputEvent) -> void:
 	match event.keycode:
 		KEY_B:
 			open_construction()
+		KEY_C:
+			open_crafting()
 		KEY_I, KEY_TAB: hud.toggle()
 		KEY_ESCAPE:
 			if hud.shade.visible: hud.toggle()

@@ -30,7 +30,7 @@ func run() -> void:
 			check(art_node.position.distance_to((b.size-art_node.size)*0.5)<1.1,"Icon centered independently of count")
 			check(b.icon==null and b.text=="","No native icon/text offset")
 			check(art_node.mouse_filter==Control.MOUSE_FILTER_IGNORE,"Icon does not intercept input")
-	for b in [w.hud.build_button,w.hud.run_button,w.graphics.menu_button]:
+	for b in [w.hud.build_button,w.hud.craft_button,w.hud.run_button,w.graphics.menu_button]:
 		var art_node := b.get_node("CenteredIcon") as TextureRect
 		check(art_node.position.distance_to((b.size-art_node.size)*0.5)<1.1,"HUD control icon centered")
 	var count_node := w.hud.cells[4].get_node("ItemCount") as Label
@@ -54,8 +54,21 @@ func run() -> void:
 	ui.open_shop()
 	check(ui.shop_panel.visible and not ui.dialog.visible,"Shop has separate UI")
 	ui.close()
-	w.home_ui.open("craft")
-	check(w.home_ui.menu.visible and w.home_ui.page=="craft","Crafting UI")
-	w.home_ui.close()
+	w.hud.craft_requested.emit()
+	check(w.home_ui.menu.visible and w.home_ui.page=="craft" and not w.site.active,"Dedicated crafting UI")
+	var workshop=w.home_ui
+	var all_ids: Array[String]=[]
+	for group in 4:
+		workshop.pick_category(group)
+		all_ids.append_array(workshop.recipe_ids(group))
+		check(workshop.workshop.find_child("CraftCategories",true,false).get_child_count()==4,"Four category icons")
+		check(workshop.recipe_group(workshop.recipe)==group,"Category selects valid recipe")
+	check(all_ids.size()==w.life.house.RECIPES.size(),"All recipes represented")
+	workshop.select_recipe("workbench")
+	check(workshop.category==3 and workshop.craft_action.disabled,"Workbench and insufficient resources")
+	workshop.select_recipe("iron_hoe")
+	check(workshop.category==1 and workshop.craft_action.disabled,"Advanced tool requires workbench")
+	workshop.close()
+	check(w.hud.visible and not workshop.menu.visible,"Crafting returns to gameplay")
 	print("Polish integration failures: ",failures)
 	quit(1 if failures else 0)

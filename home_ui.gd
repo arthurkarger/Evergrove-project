@@ -10,13 +10,18 @@ var surface := ColorRect.new()
 var title := Label.new()
 var note := Label.new()
 var options := VBoxContainer.new()
+var workshop := VBoxContainer.new()
+var panel := PanelContainer.new()
+var craft_action: Button
+const CRAFT_GROUPS := ["Itens","Ferramentas","Decorações","Móveis úteis"]
+const GROUP_ICONS := ["items","tools","decor","utility"]
 var hint := Label.new()
 var accept: Button
 var remove: Button
 var rotate: Button
 var scroll := ScrollContainer.new()
 var candidate := ""
-var category:=0
+var category:=1
 var recipe: String="hoe"
 var quantity:=1
 var chest := -1
@@ -47,7 +52,6 @@ func setup(game) -> void:
 	var center := CenterContainer.new()
 	menu.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var panel := PanelContainer.new()
 	center.add_child(panel)
 	panel.custom_minimum_size.x=470
 	panel.add_theme_stylebox_override("panel",Style.box(Style.PAPER,Color("dfcba2"),22,14,2))
@@ -63,6 +67,10 @@ func setup(game) -> void:
 	scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.add_child(options)
 	options.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	col.add_child(workshop)
+	workshop.name="Workshop"
+	workshop.add_theme_constant_override("separation",8)
+	workshop.hide()
 	button(col,"Fechar",close)
 	menu.hide()
 	add_child(board)
@@ -119,9 +127,16 @@ func link(label_text: String,which: String) -> void:
 	button(options,label_text,open.bind(which))
 
 func draw() -> void:
-	for child in options.get_children():
-		options.remove_child(child)
-		child.queue_free()
+	var crafting := page in ["craft","benchcraft"]
+	panel.custom_minimum_size.x=740 if crafting else 470
+	scroll.visible=not crafting
+	workshop.visible=crafting
+	workshop.custom_minimum_size.y=356 if crafting else 0
+	for container in [options,workshop]:
+		for child in container.get_children():
+			container.remove_child(child)
+			child.queue_free()
+	craft_action=null
 	var house=world.life.house
 	var bag=world.life.bag
 	var room: int=world.life.room
@@ -130,14 +145,12 @@ func draw() -> void:
 			title.text="Lar · %d folhas" % world.life.social.coins
 			note.text="Sua casa de telhado azul fica ao sul."
 			link("Moradores e obras","settlement")
-			link("Oficina","craft")
 			if room in [-1,6]: link("Planta da casa" if room==6 else "Construir na vila","catalog")
 			link("Aparência","look")
 			if room==6 and not house.expanded:
 				button(options,"Ampliar a casa · 70 folhas",expand_room)
 		"catalog":
 			title.text="Construção externa" if room==-1 else "Decoração da casa"
-			link("Oficina","craft")
 			link("Comunidade e serviços","home")
 			button(options,"Selecionar móvel colocado",build.bind(""))
 			for id in house.NAMES:
@@ -184,87 +197,217 @@ func draw() -> void:
 				button(options,"%s · %s ×%d" % ["Guardar" if deposit else "Retirar",bag.NAMES[slots[i].id],int(slots[i].n)],transfer.bind(i))
 			if count==0: note.text="Mochila vazia" if deposit else "Baú vazio"
 
+func recipe_group(id: String) -> int:
+	if id in world.life.bag.TOOLS: return 1
+	if id in ["flower","shrub","lamp","fountain","arch"]: return 2
+	if id in ["workbench","chest","bench","table"]: return 3
+	return 0
+
+func recipe_ids(group: int) -> Array[String]:
+	var ids: Array[String]=[]
+	for id: String in world.life.house.RECIPES:
+		if recipe_group(id)==group: ids.append(id)
+	return ids
+
+func recipe_name(id: String) -> String:
+	return world.life.bag.NAMES.get(id,world.life.house.NAMES.get(id,id))
+
+func craft_icon(id: String) -> Texture2D:
+	if id in world.life.bag.NAMES:
+		return world.hud.icon_for(id)
+	return load("res://assets/art/icons/craft_"+id+".svg") as Texture2D
+
 func select_recipe(id: String) -> void:
+	if not world.life.house.RECIPES.has(id): return
 	recipe=id
+	category=recipe_group(id)
 	note.text=""
 	draw()
 
 func pick_category(i: int) -> void:
+	if i<0 or i>=CRAFT_GROUPS.size(): return
 	category=i
 	note.text=""
-	recipe=["hoe","bench","iron_hoe"][i]
+	var ids:=recipe_ids(i)
+	if not ids.is_empty(): recipe=ids[0]
 	draw()
 
 func set_batch(n: int) -> void:
 	quantity=n
+	note.text=""
 	draw()
+
+func selected_style(b: Button) -> void:
+	for state in ["normal","hover","pressed"]:
+		b.add_theme_stylebox_override(state,Style.box(Color("fff1c8"),Color("da9e3f"),12,5,3))
+
+func workshop_label(parent: Control,value: String,size: int=16) -> Label:
+	var label := Label.new()
+	label.text=value
+	label.add_theme_font_size_override("font_size",size)
+	parent.add_child(label)
+	return label
+
+func craft_block_reason(id: String) -> String:
+	var house=world.life.house
+	var bag=world.life.bag
+	if id.begins_with("iron_") and (house.made<5 or page!="benchcraft"):
+		return "Use uma bancada após fabricar 5 itens (%d/5)." % mini(5,house.made)
+	for k in house.RECIPES[id]:
+		if bag.quantity(k)<house.RECIPES[id][k]*quantity: return "Materiais insuficientes."
+	if id in bag.TOOLS:
+		var copy = preload("res://backpack.gd").new()
+		copy.slots=bag.slots.duplicate(true)
+		for k in house.RECIPES[id]: copy.remove_items(k,house.RECIPES[id][k]*quantity)
+		if not copy.add(id,quantity): return "Mochila cheia."
+	return ""
 
 func draw_workshop() -> void:
 	var house=world.life.house
 	var bag=world.life.bag
-	title.text="Bancada" if page=="benchcraft" else "Oficina"
+	title.text="Bancada de trabalho" if page=="benchcraft" else "Crafting"
+	var ids:=recipe_ids(category)
+	if ids.is_empty(): return
+	if recipe not in ids: recipe=ids[0]
 	var tabs:=HBoxContainer.new()
-	options.add_child(tabs)
-	for i in 3: button(tabs,["Ferramentas","Objetos","Ferro"][i],pick_category.bind(i)).disabled=category==i
+	tabs.name="CraftCategories"
+	tabs.add_theme_constant_override("separation",8)
+	workshop.add_child(tabs)
+	for i in CRAFT_GROUPS.size():
+		var tab:=button(tabs,"",pick_category.bind(i))
+		tab.name="Category"+str(i)
+		tab.tooltip_text=CRAFT_GROUPS[i]
+		tab.custom_minimum_size=Vector2(0,44)
+		tab.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		Style.center_icon(tab,craft_icon(GROUP_ICONS[i]),32)
+		if category==i: selected_style(tab)
+	var body:=HBoxContainer.new()
+	body.add_theme_constant_override("separation",14)
+	body.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	workshop.add_child(body)
+	var list_scroll:=ScrollContainer.new()
+	list_scroll.name="RecipeList"
+	list_scroll.custom_minimum_size.x=222
+	list_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	body.add_child(list_scroll)
+	var list:=VBoxContainer.new()
+	list.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation",5)
+	list_scroll.add_child(list)
+	for id in ids:
+		var choice:=button(list,"",select_recipe.bind(id))
+		choice.name="Recipe_"+id
+		choice.tooltip_text=recipe_name(id)
+		choice.custom_minimum_size=Vector2(0,54)
+		var row:=HBoxContainer.new()
+		row.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		choice.add_child(row)
+		row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		row.offset_left=8
+		row.offset_right=-8
+		row.add_theme_constant_override("separation",8)
+		var art:=TextureRect.new()
+		art.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		art.custom_minimum_size=Vector2(38,38)
+		art.size_flags_vertical=Control.SIZE_SHRINK_CENTER
+		art.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.texture=Style.centered_texture(craft_icon(id))
+		row.add_child(art)
+		var item_name:=workshop_label(row,recipe_name(id),15)
+		item_name.mouse_filter=Control.MOUSE_FILTER_IGNORE
+		item_name.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		item_name.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+		item_name.text_overrun_behavior=TextServer.OVERRUN_TRIM_ELLIPSIS
+		if id==recipe:
+			selected_style(choice)
+			list_scroll.ensure_control_visible.call_deferred(choice)
+	var right:=VBoxContainer.new()
+	right.name="RecipeDetails"
+	right.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	right.add_theme_constant_override("separation",5)
+	body.add_child(right)
+	var item_title:=workshop_label(right,recipe_name(recipe),26)
+	item_title.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	var detail_scroll:=ScrollContainer.new()
+	detail_scroll.size_flags_vertical=Control.SIZE_EXPAND_FILL
+	detail_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
+	right.add_child(detail_scroll)
+	var detail:=VBoxContainer.new()
+	detail.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+	detail.add_theme_constant_override("separation",3)
+	detail_scroll.add_child(detail)
 	var view:=SubViewport.new()
 	view.name="RecipePreview"
-	view.size=Vector2i(240,100)
+	view.size=Vector2i(320,128)
 	view.own_world_3d=true
 	view.transparent_bg=true
 	view.render_target_update_mode=SubViewport.UPDATE_ONCE
 	var preview:=TextureRect.new()
-	preview.custom_minimum_size.y=78
+	preview.custom_minimum_size.y=80
 	preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	options.add_child(preview)
+	detail.add_child(preview)
 	preview.add_child(view)
 	preview.texture=view.get_texture()
 	var model: Node3D=site.model(recipe,false)
 	view.add_child(model)
 	var cam:=Camera3D.new()
 	view.add_child(cam)
-	var scale_factor:=2.6 if recipe in ["house","shop","fountain"] else 1.0
+	var scale_factor:=2.6 if recipe in ["house","shop","tree","arch"] else (1.6 if recipe in ["rod","iron_rod","fountain","lamp","fence"] else 1.0)
 	cam.position=Vector3(1.4,1.25,2.1)*scale_factor
 	cam.look_at(Vector3.UP*.43*scale_factor)
+	cam.current=true
 	var light:=DirectionalLight3D.new()
 	view.add_child(light)
 	light.rotation_degrees=Vector3(-48,-28,0)
-	var needs:=PackedStringArray()
-	for k in house.RECIPES[recipe]:
-		needs.append("%s %d/%d" % [bag.NAMES[k],bag.quantity(k),house.RECIPES[recipe][k]*quantity])
-	var label_text:String=bag.NAMES.get(recipe,house.NAMES.get(recipe,""))
+	workshop_label(detail,"Materiais necessários",17)
+	for k: String in house.RECIPES[recipe]:
+		var material:=HBoxContainer.new()
+		detail.add_child(material)
+		var icon:=TextureRect.new()
+		icon.custom_minimum_size=Vector2(26,26)
+		icon.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.texture=Style.centered_texture(craft_icon(k))
+		material.add_child(icon)
+		var name_label:=workshop_label(material,bag.NAMES[k],16)
+		name_label.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		var needed: int=house.RECIPES[recipe][k]*quantity
+		var owned: int=bag.quantity(k)
+		var amount:=workshop_label(material,"%d / %d" % [owned,needed],16)
+		amount.add_theme_color_override("font_color",Color("507c41") if owned>=needed else Color("b34e3f"))
+	var reason:=craft_block_reason(recipe)
+	if not reason.is_empty():
+		var warning:=workshop_label(detail,reason,14)
+		warning.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
+		warning.add_theme_color_override("font_color",Color("a65c3e"))
 	var batch:=HBoxContainer.new()
-	options.add_child(batch)
-	for n in [1,5,10]: button(batch,"×%d" % n,set_batch.bind(n)).disabled=n==quantity
-	var action:=button(options,"Fabricar "+label_text+" · "+", ".join(needs),craft.bind(recipe))
-	if category==2 and (house.made<5 or page!="benchcraft"):
-		action.disabled=true
-		note.text="Use uma bancada após fabricar 5 itens (%d/5)." % mini(5,house.made)
-	for id: String in house.RECIPES:
-		var group:=2 if id.begins_with("iron_") else (0 if id in bag.TOOLS else 1)
-		if group!=category: continue
-		var choice:=button(options,bag.NAMES.get(id,house.NAMES.get(id,"")),select_recipe.bind(id))
-		choice.icon=world.hud.icon_for(id if id in bag.TOOLS else str(house.RECIPES[id].keys()[0]))
-	link("Voltar","catalog")
+	right.add_child(batch)
+	for n in [1,5,10]:
+		var count_button:=button(batch,"×%d" % n,set_batch.bind(n))
+		count_button.custom_minimum_size.y=34
+		count_button.size_flags_horizontal=Control.SIZE_EXPAND_FILL
+		if n==quantity: selected_style(count_button)
+	craft_action=button(right,"Craftar ×%d" % quantity,craft.bind(recipe))
+	craft_action.name="CraftAction"
+	craft_action.custom_minimum_size.y=44
+	craft_action.add_theme_stylebox_override("normal",Style.box(Color("d9e9b6"),Color("92aa67"),14,7,2))
+	craft_action.add_theme_stylebox_override("hover",Style.box(Color("c8e0a0"),Color("759553"),14,7,2))
+	craft_action.disabled=not reason.is_empty()
 
 func craft(id: String) -> void:
 	if world.life.house.craft(id,world.life.bag,quantity,page=="benchcraft"):
 		if id in ["bench","table","chest","arch"]:
 			for i in quantity: world.life.settlement.count("furniture")
 		world.save_game()
+		draw()
 		note.text="Fabricado ×%d" % quantity
-		var preview:=options.find_child("RecipePreview",true,false) as SubViewport
-		if preview:
-			var display:=preview.get_child(0) as Node3D
-			preview.render_target_update_mode=SubViewport.UPDATE_ALWAYS
-			var motion:=display.create_tween()
-			motion.tween_property(display,"rotation:y",0.7,0.22)
-			motion.parallel().tween_property(display,"position:y",0.16,0.12)
-			motion.tween_property(display,"position:y",0.0,0.13)
-			motion.tween_callback(draw)
 		note.modulate.a=0.15
 		note.create_tween().tween_property(note,"modulate:a",1.0,0.35)
-	else: note.text="Confira os materiais e o espaço na mochila."
+	else:
+		note.text="Confira os materiais e o espaço na mochila."
+		draw()
 
 func expand_room() -> void:
 	if world.life.house.expand(world.life.social):
