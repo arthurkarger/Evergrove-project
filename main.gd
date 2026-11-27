@@ -1,10 +1,10 @@
 extends Node3D
 var player: CharacterBody3D
 var camera: Camera3D
-var sprite: Sprite3D
+const CozyCharacter = preload("res://cozy_character.gd")
+var character: Node3D
 var touch := Vector2.ZERO
 var elapsed := 0.0
-var textures: Array[ImageTexture] = []
 const Village = preload("res://village.gd")
 
 var life := preload("res://homestead.gd").new()
@@ -22,38 +22,11 @@ var focus_kind := ""
 var focus_index := -1
 var initialized := false
 
-func make_sprite(step: int) -> ImageTexture:
-	var img := Image.create(16,24,false,Image.FORMAT_RGBA8)
-	img.fill(Color.TRANSPARENT)
-	var look: Array=life.house.look
+func update_look() -> void:
+	var look: Array = life.house.look
 	var hair := Color(["674637","ad804d","393236","ad624c"][int(look[1])])
 	var fabric := Color(["517b91","6e8964","91596b","b29554"][int(look[3])])
-	img.fill_rect(Rect2i(4,2,8,8),hair.darkened(0.15))
-	img.fill_rect(Rect2i(5,5,7,6),Color("f2c39b"))
-	img.fill_rect(Rect2i(4,3,8,3),hair)
-	img.set_pixel(6,7,Color("302b31"))
-	img.set_pixel(10,7,Color("302b31"))
-	img.fill_rect(Rect2i(4,11,8,7),fabric)
-	img.fill_rect(Rect2i(2,12,2,5),Color("f2c39b"))
-	img.fill_rect(Rect2i(12,12,2,5),Color("f2c39b"))
-	img.fill_rect(Rect2i(5,18,3,4-step),Color("394754"))
-	img.fill_rect(Rect2i(9,18,3,3+step),Color("394754"))
-	img.fill_rect(Rect2i(4,22-step,4,2),Color("49392e"))
-	img.fill_rect(Rect2i(9,21+step,4,2),Color("49392e"))
-	if look[0]==1: img.fill_rect(Rect2i(4,5,4,3),hair)
-	if look[0]==2: img.fill_rect(Rect2i(7,0,5,4),hair)
-	if look[2]==1:
-		img.fill_rect(Rect2i(5,13,6,5),Color("556570"))
-		img.fill_rect(Rect2i(5,11,1,3),Color("556570"))
-		img.fill_rect(Rect2i(10,11,1,3),Color("556570"))
-	if look[2]==2:
-		img.fill_rect(Rect2i(4,11,8,2),Color("e8cb98"))
-		img.fill_rect(Rect2i(9,12,2,4),Color("e8cb98"))
-	return ImageTexture.create_from_image(img)
-
-func update_look() -> void:
-	textures=[make_sprite(0),make_sprite(1)]
-	sprite.texture=textures[0]
+	character.configure(hair,fabric,Color("f2c39b"),int(look[0]),int(look[2]),-0.51)
 
 func door(i: int) -> Vector2:
 	return life.house.DOOR if i==6 else town.DOORS[i]
@@ -71,7 +44,9 @@ func _ready():
 	sun.rotation_degrees = Vector3(-55,-35,0)
 	sun.shadow_enabled = true
 	sun.light_energy = 0.65
-	sun.light_specular = 0.0
+	sun.light_specular = 0.15
+	sun.directional_shadow_max_distance = 32.0
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
 	var village := Village.new()
 	add_child(village)
@@ -85,14 +60,9 @@ func _ready():
 	shape.height = 1.0
 	c.shape = shape
 	player.add_child(c)
-	sprite = Sprite3D.new()
-	textures = [make_sprite(0),make_sprite(1)]
-	sprite.texture = textures[0]
-	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	sprite.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sprite.pixel_size = 0.075
-	sprite.position.y = 0.35
-	player.add_child(sprite)
+	character = CozyCharacter.new()
+	player.add_child(character)
+	update_look()
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = 15
@@ -294,11 +264,26 @@ func update_world_ui() -> void:
 	var hours := posmod(6+floori(phase*24),24)
 	var minutes := floori(fmod(phase*24,1.0)*6)*10
 	hud.clock_label.text = "Dia %d  ·  %02d:%02d  ·  %d F  ·  v%s" % [life.day,hours,minutes,life.social.coins,ProjectSettings.get_setting("application/config/version")]
-	var light := smoothstep(-0.36,0.38,sin(phase*TAU))
-	sun.light_energy = lerpf(0.10,0.65,light)
-	sky.ambient_light_energy = lerpf(0.40,0.48,light)
-	sky.ambient_light_color = Color("a4b4d7").lerp(Color("e5dfd0"),light)
-	sky.background_color = Color("465772").lerp(Color("b8d6dc"),light)
+	update_solar_lighting(phase)
+
+func update_solar_lighting(phase: float) -> void:
+	# Sunrise at 06:00, noon at 12:00, sunset at 18:00.
+	var elevation := sin(phase*TAU)
+	var daylight := smoothstep(-0.10,0.28,elevation)
+	var twilight := (1.0-smoothstep(0.06,0.60,absf(elevation)))*smoothstep(-0.22,0.02,elevation)
+	var sunset := Color("ffc18a").lerp(Color("ffac82"),clampf(phase*2.0,0.0,1.0))
+	sun.rotation_degrees = Vector3(-lerpf(12.0,68.0,maxf(elevation,0.0)),lerpf(-105.0,105.0,clampf(phase*2.0,0.0,1.0)),0)
+	sun.light_color = Color("a7b9ed").lerp(Color("fff1da").lerp(sunset,twilight),daylight)
+	sun.light_energy = lerpf(0.08,0.68,daylight)
+	sky.ambient_light_energy = lerpf(0.29,0.48,daylight)
+	sky.ambient_light_color = Color("9aabd8").lerp(Color("c7d9db"),daylight).lerp(Color("e5ac91"),twilight*0.64)
+	sky.background_color = Color("293e63").lerp(Color("b8d6dc"),daylight).lerp(Color("eab08e"),twilight)
+	if life.room>=0:
+		sun.rotation_degrees = Vector3(-55,-35,0)
+		sun.light_color = Color("ffe9cb")
+		sun.light_energy = 0.36
+		sky.ambient_light_energy = 0.62
+		sky.ambient_light_color = Color("e9ddca")
 
 # One screen sample, no blur, bloom, depth pass or HUD processing.
 func setup_world_shader() -> void:
@@ -314,8 +299,8 @@ func setup_world_shader() -> void:
 shader_type canvas_item;
 render_mode unshaded, blend_disabled;
 uniform sampler2D world_screen : hint_screen_texture, repeat_disable, filter_nearest;
-uniform float highlight_strength : hint_range(0.0, 0.6) = 0.28;
-uniform float saturation : hint_range(0.0, 1.2) = 0.94;
+uniform float highlight_strength : hint_range(0.0, 0.6) = 0.16;
+uniform float saturation : hint_range(0.0, 1.2) = 1.0;
 void fragment() {
 	vec3 src = texture(world_screen, SCREEN_UV).rgb;
 	float lum = dot(src, vec3(0.2126, 0.7152, 0.0722));
@@ -382,6 +367,5 @@ func _physics_process(delta):
 		player.position.x = clampf(player.position.x,center.x-3.6,center.x+(7.6 if life.room==6 and life.house.expanded else 3.6))
 		player.position.z = clampf(player.position.z,-2.7,2.7)
 	elapsed += delta
-	sprite.texture = textures[int(elapsed*9)%2] if d.length()>0.1 else textures[0]
-	if abs(d.x)>0.1: sprite.flip_h = d.x<0
+	character.pose(d,delta)
 	if site.blend==0: camera.position = camera.position.lerp(player.position+Vector3(0,10,10),1-exp(-delta*8))
