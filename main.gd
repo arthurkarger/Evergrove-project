@@ -6,6 +6,12 @@ var character: CozyCharacter
 var touch := Vector2.ZERO
 var elapsed := 0.0
 const Village = preload("res://village.gd")
+const GraphicsMenu = preload("res://graphics_menu.gd")
+var graphics := GraphicsMenu.new()
+var village := Village.new()
+var grade_overlay: ColorRect
+var grade_material: ShaderMaterial
+var quality_level := 2
 
 var life := preload("res://homestead.gd").new()
 var hud := preload("res://roots_ui.gd").new()
@@ -48,7 +54,6 @@ func _ready():
 	sun.directional_shadow_max_distance = 32.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
-	var village := Village.new()
 	add_child(village)
 	add_child(life)
 	player = CharacterBody3D.new()
@@ -95,6 +100,10 @@ func _ready():
 		player.position = town.origin(life.room)+Vector3(life.room_pos.x,0.51,life.room_pos.y)
 		camera.position = player.position+Vector3(0,10,10)
 	town.step(0,game_hour(),life.room)
+	add_child(graphics)
+	graphics.build(self)
+	graphics.quality_changed.connect(apply_graphics)
+	apply_graphics(graphics.level)
 	initialized = true
 	update_world_ui()
 	if not FileAccess.file_exists(life.SAVE):
@@ -163,6 +172,7 @@ func interact_focus() -> void:
 			save_game()
 
 func use_item() -> void:
+	if graphics.shade.visible: return
 	if hud.shade.visible or village_menu.shade.visible: return
 	update_world_ui()
 	if focus_kind!="":
@@ -179,6 +189,11 @@ func use_item() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not initialized or not event is InputEventKey or not event.pressed or event.echo: return
+	if graphics.shade.visible:
+		if event.keycode==KEY_ESCAPE:
+			graphics.back()
+			get_viewport().set_input_as_handled()
+		return
 	if home_ui.menu.visible or site.active:
 		if event.keycode==KEY_ESCAPE: home_ui.close()
 		elif site.active and event.keycode==KEY_R: home_ui.rotate_item()
@@ -196,7 +211,7 @@ func _input(event: InputEvent) -> void:
 		KEY_I, KEY_TAB: hud.toggle()
 		KEY_ESCAPE:
 			if hud.shade.visible: hud.toggle()
-			else: return
+			else: graphics.open()
 		KEY_E: use_item()
 		_:
 			if event.keycode >= KEY_1 and event.keycode <= KEY_6 and not hud.shade.visible:
@@ -278,6 +293,12 @@ func update_solar_lighting(phase: float) -> void:
 	sky.ambient_light_energy = lerpf(0.29,0.48,daylight)
 	sky.ambient_light_color = Color("9aabd8").lerp(Color("c7d9db"),daylight).lerp(Color("e5ac91"),twilight*0.64)
 	sky.background_color = Color("293e63").lerp(Color("b8d6dc"),daylight).lerp(Color("eab08e"),twilight)
+	village.update_lamps(daylight)
+	if grade_material != null:
+		grade_material.set_shader_parameter("dusk",twilight if life.room<0 else 0.0)
+	sky.fog_enabled = quality_level>=2 and life.room<0
+	sky.fog_light_color = sky.background_color
+	sky.fog_density = 0.0035 if quality_level==3 else 0.0018
 	if life.room>=0:
 		sun.rotation_degrees = Vector3(-55,-35,0)
 		sun.light_color = Color("ffe9cb")
@@ -292,6 +313,7 @@ func setup_world_shader() -> void:
 	grade.layer = 0
 	add_child(grade)
 	var overlay := ColorRect.new()
+	grade_overlay = overlay
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.focus_mode = Control.FOCUS_NONE
 	var shader := Shader.new()
@@ -301,6 +323,8 @@ render_mode unshaded, blend_disabled;
 uniform sampler2D world_screen : hint_screen_texture, repeat_disable, filter_nearest;
 uniform float highlight_strength : hint_range(0.0, 0.6) = 0.16;
 uniform float saturation : hint_range(0.0, 1.2) = 1.0;
+uniform int quality = 2;
+uniform float dusk = 0.0;
 void fragment() {
 	vec3 src = texture(world_screen, SCREEN_UV).rgb;
 	float lum = dot(src, vec3(0.2126, 0.7152, 0.0722));
@@ -309,14 +333,48 @@ void fragment() {
 	c *= 1.0 - highlight_strength * shoulder;
 	// Gentle warm highlights and slightly cool shadows.
 	c *= mix(vec3(0.98, 1.0, 1.025), vec3(1.015, 1.0, 0.975), smoothstep(0.15, 0.75, lum));
+	if (quality >= 2) {
+		float vignette = smoothstep(0.26, 0.72, length((SCREEN_UV - 0.5) * vec2(1.0, 0.83)));
+		c *= 1.0 - vignette * (0.055 + 0.035 * dusk);
+	}
+	if (quality == 3) {
+		// Subtle local contrast, without the old white bloom.
+		vec3 neighbor = (texture(world_screen, SCREEN_UV + vec2(SCREEN_PIXEL_SIZE.x, 0.0)).rgb +
+			texture(world_screen, SCREEN_UV - vec2(SCREEN_PIXEL_SIZE.x, 0.0)).rgb +
+			texture(world_screen, SCREEN_UV + vec2(0.0, SCREEN_PIXEL_SIZE.y)).rgb +
+			texture(world_screen, SCREEN_UV - vec2(0.0, SCREEN_PIXEL_SIZE.y)).rgb) * 0.25;
+		c += clamp(src - neighbor, vec3(-0.15), vec3(0.15)) * 0.12;
+	}
 	COLOR = vec4(clamp(c, vec3(0.0), vec3(1.0)), 1.0);
 }
 """
-	var grade_material := ShaderMaterial.new()
+	grade_material = ShaderMaterial.new()
 	grade_material.shader = shader
 	overlay.material = grade_material
 	grade.add_child(overlay)
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+func apply_graphics(level: int) -> void:
+	quality_level = clampi(level,0,3)
+	var viewport := get_viewport()
+	var renderer := RenderingServer.get_current_rendering_method()
+	# Mobile supports a separate 3D resolution scale; keep HUD resolution unchanged.
+	if renderer != "gl_compatibility":
+		viewport.scaling_3d_scale = [0.60,0.80,1.0,1.15][quality_level]
+	viewport.msaa_3d = Viewport.MSAA_4X if quality_level==3 else (Viewport.MSAA_2X if quality_level==2 else Viewport.MSAA_DISABLED)
+	sun.shadow_enabled = quality_level>0
+	sun.directional_shadow_max_distance = [12.0,18.0,28.0,42.0][quality_level]
+	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality_level==3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
+	sun.directional_shadow_blend_splits = quality_level>=2
+	RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
+	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
+	village.set_quality(quality_level)
+	CozyCharacter.set_quality(quality_level)
+	if grade_overlay != null:
+		grade_overlay.visible = quality_level>0
+		grade_material.set_shader_parameter("quality",quality_level)
+		grade_material.set_shader_parameter("highlight_strength",0.16)
+	update_solar_lighting(life.clock/life.DAY_SECONDS)
 
 func save_game() -> void:
 	if initialized:
@@ -335,6 +393,7 @@ func _exit_tree() -> void:
 	save_game()
 
 func _physics_process(delta):
+	if graphics.shade.visible: return
 	if site.active or site.blend>0:
 		site.camera_step(delta)
 		if site.active: return
