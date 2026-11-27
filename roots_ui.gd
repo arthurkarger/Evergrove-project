@@ -40,6 +40,33 @@ var held_label := Label.new()
 var build_button := Button.new()
 var craft_button := Button.new()
 var run_button := Button.new()
+var touch_buttons := {}
+
+# Godot emulates a single mouse pointer. Route simultaneous HUD contacts by
+# index, with release-inside activation and independent joystick ownership.
+func _input(event: InputEvent) -> void:
+	if not event is InputEventScreenTouch: return
+	if not visible or shade.visible:
+		touch_buttons.clear()
+		return
+	if event.pressed:
+		for control in [action,run_button]:
+			if control.is_visible_in_tree() and not control.disabled and control.get_global_rect().has_point(event.position):
+				touch_buttons[event.index]=control
+				get_viewport().set_input_as_handled()
+				return
+	elif touch_buttons.has(event.index):
+		var button: Button=touch_buttons[event.index]
+		touch_buttons.erase(event.index)
+		get_viewport().set_input_as_handled()
+		if not event.canceled and button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
+			if button.toggle_mode: button.button_pressed=not button.button_pressed
+			button.pressed.emit()
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT]:
+		touch_buttons.clear()
+		run_button.set_pressed_no_signal(false)
 
 func panel_style(fill: String,border: String) -> StyleBoxFlat:
 	return Style.box(Color(fill),Color(border),16,10)

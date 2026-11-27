@@ -20,6 +20,7 @@ var look: Array
 var world_name: String
 var selected_map: String
 var avatar: Node3D
+var preview_finger:=-1
 var rotation_angle:=0.0
 var editor_controls: VBoxContainer
 var thumbnails: Dictionary={}
@@ -52,6 +53,7 @@ func clear(parent: Node) -> void:
 
 func page(id: String,heading: String) -> void:
 	stage=id
+	preview_finger=-1
 	avatar=null
 	clear(body)
 	show()
@@ -169,6 +171,7 @@ func editor() -> void:
 		btn.pressed.connect(choose_category.bind(i))
 	editor_controls=VBoxContainer.new()
 	col.add_child(editor_controls)
+	avatar.configure_player(look,profile,0)
 	choose_category(category)
 	notice=host.text_label(body,"",15)
 	var nav:=HBoxContainer.new()
@@ -184,8 +187,12 @@ func import_legacy(path: String) -> void:
 
 func turn_preview(event: InputEvent) -> void:
 	var dx:=0.0
-	if event is InputEventScreenDrag: dx=event.relative.x
-	elif event is InputEventMouseMotion and event.button_mask&MOUSE_BUTTON_MASK_LEFT: dx=event.relative.x
+	if event is InputEventScreenTouch:
+		if event.pressed and preview_finger==-1: preview_finger=event.index
+		elif not event.pressed and preview_finger==event.index: preview_finger=-1
+		return
+	if event is InputEventScreenDrag and event.index==preview_finger: dx=event.relative.x
+	elif event is InputEventMouseMotion and event.device!=InputEvent.DEVICE_ID_EMULATION and event.button_mask&MOUSE_BUTTON_MASK_LEFT: dx=event.relative.x
 	else: return
 	rotation_angle+=dx*.015
 	avatar.rotation.y=rotation_angle
@@ -204,7 +211,6 @@ func choose_category(index: int) -> void:
 		3:
 			selector("Roupa",Character.OUTFITS,2)
 			selector("Cor",Character.CLOTH_NAMES,3)
-	avatar.configure_player(look,profile,0)
 
 func selector(label: String,choices: Array,key) -> void:
 	var idx:=int(look[key] if key is int else profile[key])
@@ -213,6 +219,7 @@ func selector(label: String,choices: Array,key) -> void:
 func cycle(key,count: int) -> void:
 	if key is int: look[key]=(int(look[key])+1)%count
 	else: profile[key]=(int(profile[key])+1)%count
+	avatar.configure_player(look,profile,0)
 	choose_category(category)
 
 func next_from_character() -> void:

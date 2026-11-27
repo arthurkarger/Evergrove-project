@@ -86,6 +86,7 @@ func _ready() -> void:
 		build_lamps()
 	wall(Vector3(0,-0.3,0),Vector3(94,0.6,78))
 	world_grid.terrain_provider=shoreline.terrain_at
+	world_grid.height_provider=shoreline.height_at
 	shoreline.add_boundary(self)
 	var plane:=PlaneMesh.new()
 	plane.size=Vector2.ONE
@@ -206,7 +207,7 @@ void fragment() {
 	float nx = 0.0;
 	float nz = 0.0;
 	if (quality>0) {
-		crest += smoothstep(0.70,0.99,wave_a*0.65+wave_b*0.35)*0.075;
+		crest += smoothstep(0.70,0.99,wave_a*0.65+wave_b*0.35)*0.038*(.55+.45*sin(.13*p.x+.08*p.y));
 		nx = cos(a)*0.09;
 		nz = cos(b)*0.075;
 	}
@@ -255,6 +256,7 @@ uniform float rain_wet=0.;
 uniform float cloud_cover=0.;
 uniform sampler2D art_grass : source_color, repeat_enable, filter_linear_mipmap;
 uniform bool has_art_grass = false;
+uniform vec3 meadow_color=vec3(.26,.44,.19);
 varying vec3 world_pos;
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -274,21 +276,24 @@ void fragment() {
 	if (quality > 0) { shade += 0.021 * fleck; }
 	if (quality > 1) { shade += 0.011 * detail + 0.009 * mottling; }
 	if (quality == 3) { shade += 0.012 * sin(p.x * 7.0 + p.y * 5.0) * cos(p.y * 8.0); }
-	vec3 grass_base = vec3(0.30, 0.59, 0.13);
+	vec3 grass_base = meadow_color;
 	if (has_art_grass && quality > 0) {
 		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.38);
 	}
 	ALBEDO = grass_base * mix(vec3(1.),COLOR.rgb / vec3(.58,.71,.47),0.28) + vec3(shade, shade, shade * 0.55);
-	vec2 bank=(texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
+	vec4 coast_sample=texture(shore_map,p/vec2(100.,84.)+0.5);
+	vec2 bank=(coast_sample.rg-0.5)*16.;
 	float wet=min(bank.x,bank.y);
-	float edge=min(bank.x-2.75,bank.y-0.46)+patch*0.13;
-	vec3 beach=mix(vec3(.48,.34,.19),vec3(.91,.77,.50),smoothstep(-.45,1.20,wet));
+	float edge=min(bank.x-coast_sample.b*8.+.50,bank.y-0.46)+patch*0.13;
+	vec3 beach=mix(vec3(.48,.34,.19),vec3(.70,.59,.40),smoothstep(-.45,1.20,wet));
 	vec3 river_bank=mix(vec3(.36,.29,.16),vec3(.67,.56,.34),smoothstep(-.1,.55,wet));
-	beach=mix(beach,river_bank,step(bank.y,bank.x));
+	beach=mix(beach,river_bank,smoothstep(-1.5,1.5,bank.x-bank.y));
 	float tide=0.14+0.43*(0.5+0.5*sin(TIME*1.65+sin(p.x*0.19+p.y*0.13)*0.85));
 	float damp=(1.0-smoothstep(tide+0.10,tide+0.65,bank.x))*step(bank.x,bank.y);
 	beach*=mix(1.0,0.73,damp);
 	ALBEDO=mix(beach*(1.+0.044*detail+0.023*patch),ALBEDO,smoothstep(-.55,.55,edge));
+	vec3 soil=vec3(.40,.30,.19)*(1.+.09*mottling+.12*detail);
+	ALBEDO=mix(ALBEDO,soil,clamp(coast_sample.a*(.89+.10*patch)+detail*.13*coast_sample.a,0.,1.));
 	float pool=0.;
 	if(rain_wet>.01){
 		float basin=sin(p.x*1.5+sin(p.y*.85))*cos(p.y*1.21+.7*sin(p.x*.81));
@@ -310,6 +315,9 @@ void fragment() {
 		shader.code=shader.code.replace("shader_type spatial;","shader_type spatial;\n#define CLEAR_WATER")
 	result.shader = shader
 	if not water:
+		if landscape:
+			var palettes: Dictionary={"vale":Vector3(.28,.45,.20),"pinhal":Vector3(.17,.36,.24),"pomar":Vector3(.34,.43,.17),"brejo":Vector3(.21,.41,.30)}
+			result.set_shader_parameter("meadow_color",palettes[landscape.id])
 		var grass := preload("res://art_assets.gd").surface("grass")
 		if grass != null:
 			result.set_shader_parameter("art_grass", grass)
@@ -341,7 +349,7 @@ func flush_batches() -> void:
 	var grass_material := landscape_material(false)
 	water_simple=landscape_material(true)
 	water_clear=landscape_material(true,true)
-	var banks:=shoreline.texture()
+	var banks:=shoreline.texture(path_segments if landscape else [])
 	for mat in [grass_material,water_simple,water_clear]:
 		mat.set_shader_parameter("shore_map",banks)
 	lake_material=water_clear
@@ -414,6 +422,7 @@ func wall(pos: Vector3, size: Vector3, angle := 0.0) -> void:
 func path_between(a: Vector2, b: Vector2, width: float) -> void:
 	path_segments.append([a,b,width])
 	world_grid.reserve_line(a,b,width,"Caminho da vila")
+	if landscape: return
 	var mid := (a + b) / 2
 	var line := b - a
 	piece("path_box", Vector3(mid.x,0.014,mid.y), Vector3(width,0.02,line.length()), TRAIL, atan2(line.x,line.y))
@@ -692,7 +701,9 @@ void fragment() {
 
 func clear_for_grass(p: Vector2) -> bool:
 	if shoreline.terrain_at(p)!="grass": return false
-	if landscape and world_grid.reserved.has(Vector2i(p.round())): return false
+	if landscape:
+		var cell:=Vector2i(p.round())
+		if world_grid.reserved.has(cell) or landscape.occupied_cells.has(cell): return false
 	if Rect2(-5,16,11,7).has_point(p) or Rect2(2,3.5,7,6).has_point(p):
 		return false
 	if ((p-Vector2(22,-7))/Vector2(6.7,8.8)).length() < 1.04:

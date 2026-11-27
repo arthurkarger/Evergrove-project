@@ -56,6 +56,7 @@ func valid(room: int,id: String,cell: Vector2i,r: int,skip: int,player: Vector2)
 	return placement_reason(room,id,cell,r,skip,player)==""
 
 func place(room: int,id: String,cell: Vector2i,r: int,index: int,player: Vector2) -> bool:
+	if index < -1 or index>=objects.size(): return false
 	if not valid(room,id,cell,r,index,player): return false
 	var obj: Dictionary
 	if index<0:
@@ -83,18 +84,24 @@ func remove_object(i: int) -> bool:
 	objects.remove_at(i)
 	return true
 
-func craft(id: String,bag,count:=1,bench:=false) -> bool:
-	if count<1 or not RECIPES.has(id): return false
-	if id.begins_with("iron_") and (made<5 or not bench): return false
+# Simulate on a copy so preview and purchase agree even when ingredients
+# release the last inventory slots needed for a batch of tools.
+func prepare_craft(id: String,bag,count: int,bench: bool) -> Dictionary:
+	if count<1 or not RECIPES.has(id): return {"reason":"Receita inválida."}
+	if id.begins_with("iron_") and (made<5 or not bench):
+		return {"reason":"Use uma bancada após fabricar 5 itens (%d/5)." % mini(5,made)}
+	var result:=Bag.new()
+	result.slots=bag.slots.duplicate(true)
 	for k in RECIPES[id]:
-		if bag.quantity(k)<RECIPES[id][k]*count: return false
-	var before:Array=bag.slots.duplicate(true)
-	for k in RECIPES[id]: bag.remove_items(k,RECIPES[id][k]*count)
-	if id in Bag.TOOLS:
-		if not bag.add(id,count):
-			bag.slots=before
-			return false
-	else: stock[id]=int(stock.get(id,0))+count
+		if not result.remove_items(k,RECIPES[id][k]*count): return {"reason":"Materiais insuficientes."}
+	if id in Bag.TOOLS and not result.add(id,count): return {"reason":"Mochila cheia."}
+	return {"reason":"","slots":result.slots}
+
+func craft(id: String,bag,count:=1,bench:=false) -> bool:
+	var result:=prepare_craft(id,bag,count,bench)
+	if result.reason!="": return false
+	bag.slots=result.slots
+	if id not in Bag.TOOLS: stock[id]=int(stock.get(id,0))+count
 	made+=count
 	return true
 

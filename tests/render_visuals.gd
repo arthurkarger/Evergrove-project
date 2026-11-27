@@ -57,5 +57,8 @@ func run() -> void:
 				colors[frame.get_pixel(x,y).to_html(false)]=true
 		check(colors.size()>32,"Scene color variation")
 		if not out.is_empty(): check(frame.save_png(out.path_join("preset-%d.png" % level))==OK,"Write preview")
+	w.atmosphere.set_outdoors(false)
+	w.queue_free()
+	await create_timer(.3).timeout
 	print("Rendered preset failures: ",failures)
 	quit(1 if failures else 0)

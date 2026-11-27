@@ -30,11 +30,23 @@ func run() -> void:
 	check(wizard.visible and wizard.stage=="slots","Jogar opens slots")
 	wizard.create(1)
 	wizard.profile.name="Sol"
+	var touch:=InputEventScreenTouch.new()
+	touch.index=2
+	touch.pressed=true
+	wizard.turn_preview(touch)
+	var drag:=InputEventScreenDrag.new()
+	drag.index=3
+	drag.relative=Vector2(20,0)
+	wizard.turn_preview(drag)
+	check(wizard.rotation_angle==0,"Second finger leaves preview stationary")
+	drag.index=2
+	wizard.turn_preview(drag)
+	check(wizard.rotation_angle>0,"Preview follows its own finger")
 	wizard.cycle("skin",6)
 	wizard.look[1]=2
 	wizard.cycle("eye_color",5)
 	wizard.next_from_character()
-	check(wizard.stage=="world" and wizard.thumbnails.size()==3,"Three initial maps")
+	check(wizard.stage=="world" and wizard.thumbnails.size()==4,"Four initial maps")
 	wizard.selected_map="pinhal"
 	wizard.world_name="Ilha Azul"
 	wizard.finish()

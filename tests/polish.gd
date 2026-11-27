@@ -70,5 +70,29 @@ func run() -> void:
 	check(workshop.category==1 and workshop.craft_action.disabled,"Advanced tool requires workbench")
 	workshop.close()
 	check(w.hud.visible and not workshop.menu.visible,"Crafting returns to gameplay")
+	# Hold the pad while two independent fingers engage run and action.
+	var pad_pos:=Vector2(65,410)
+	var contact:=InputEventScreenTouch.new()
+	contact.index=3
+	contact.position=pad_pos
+	contact.pressed=true
+	w.pad._input(contact)
+	w.hud.run_button.show()
+	w.hud.action.show()
+	w.hud.action.disabled=false
+	for entry in [[4,w.hud.run_button],[5,w.hud.action]]:
+		contact.index=entry[0]
+		contact.position=entry[1].get_global_rect().get_center()
+		w.hud._input(contact)
+	check(w.hud.touch_buttons.size()==2 and w.pad.finger==3,"Three simultaneous contacts")
+	contact.index=4
+	contact.position=w.hud.run_button.get_global_rect().get_center()
+	contact.pressed=false
+	w.hud._input(contact)
+	check(w.hud.run_button.button_pressed and w.hud.touch_buttons.has(5) and w.pad.finger==3,"Independent release")
+	contact.index=5
+	contact.canceled=true
+	w.hud._input(contact)
+	check(w.hud.touch_buttons.is_empty(),"Cancel releases action contact")
 	print("Polish integration failures: ",failures)
 	quit(1 if failures else 0)

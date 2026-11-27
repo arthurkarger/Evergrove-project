@@ -94,7 +94,8 @@ func _ready():
 	player.position = life.saved_position
 	if village.landscape and life.room==-1:
 		var old_position:=Vector2(player.position.x,player.position.z)
-		if village.shoreline.distance_at(old_position)<.45:
+		var blocked: bool=village.world_grid.reserved.get(Vector2i(old_position.round()),"") in ["Árvore","Edifício","Construção ou obstáculo"]
+		if blocked or (village.shoreline.distance_at(old_position)<.45 and not village.shoreline.bridge.has_point(old_position)):
 			var nearest:=Vector2(0,6)
 			var best:=INF
 			for x in range(-38,39):
@@ -170,18 +171,17 @@ func prepare_lot_room(room: int) -> void:
 
 func configure_world_grid() -> void:
 	var grid=village.world_grid
-	if village.landscape:
-		# Move forage clear of shoreline and trunks before reserving its cell.
-		grid.reserve_box(Vector2(0,6),Vector2(2,2),"Chegada")
-		grid.reserve_box(Vector2(0,1),Vector2(8,4),"Acampamento dos visitantes")
 	# Resources, entrances and NPC travel graph share the same occupancy contract.
 	grid.cultivated=life.cell_index
 	for resource in life.resources:
 		var p: Vector3=resource.node.position
 		if village.landscape:
 			var cell:=Vector2i(roundi(p.x),roundi(p.z))
-			while grid.cultivated.has(cell) or grid.reserved.has(cell) or village.landscape.original_water_cells.has(cell) or life.house.at(-1,cell)>=0:
-				cell.x=wrapi(cell.x+1,-29,30)
+			cell=forage_cell(grid,cell)
+			if not grid.bounds.has_point(cell):
+				resource["unplaced"]=true
+				resource.node.hide()
+				continue
 			resource.node.position=Vector3(cell.x,p.y,cell.y)
 			p=resource.node.position
 		grid.reserve_box(Vector2(p.x,p.z),Vector2(0.9,0.9),"Recurso")
@@ -195,6 +195,19 @@ func configure_world_grid() -> void:
 			if neighbor>id:
 				grid.reserve_line(town.graph.get_point_position(id),town.graph.get_point_position(neighbor),1.2,"Rota de moradores")
 	life.house.world_grid=grid
+
+# Prefer the original row, then inspect other rows. Even a fully developed
+# island has a bounded search and keeps the resource's persistent index.
+func forage_cell(grid,origin: Vector2i) -> Vector2i:
+	var bounds: Rect2i=grid.bounds
+	for row in bounds.size.y:
+		var z:=wrapi(origin.y+row,bounds.position.y,bounds.end.y)
+		for col in bounds.size.x:
+			var cell:=Vector2i(wrapi(origin.x+col,bounds.position.x,bounds.end.x),z)
+			if grid.reserved.has(cell) or grid.cultivated.has(cell): continue
+			if grid.terrain_at(cell)!="grass" or village.landscape.original_water_cells.has(cell): continue
+			if life.house.at(-1,cell)<0: return cell
+	return bounds.end
 
 func select_slot(slot: int) -> void:
 	life.bag.selected = slot
@@ -428,7 +441,7 @@ func update_solar_lighting(phase: float) -> void:
 	var dusk := phase>0.25 and phase<0.70
 	var horizon := Color("f6bca1") if not dusk else Color("ef977a")
 	var direct := Color("fff3d4").lerp(Color("ffab45"),twilight*0.92)
-	var strength := lerpf(0.0,1.85,smoothstep(-0.045,0.44,elevation))
+	var strength := lerpf(0.0,1.04 if quality_level<2 else 1.50,smoothstep(-0.045,0.44,elevation))
 	sun.rotation_degrees = Vector3(-72.0*elevation,-105.0+phase*360.0,0)
 	sun.light_color = direct
 	sun.light_energy = strength
@@ -557,7 +570,7 @@ func apply_graphics(level: int) -> void:
 	sky_dome.sky_material = physical_sky if quality_level==3 else sky_paint
 	sky.tonemap_mode = Environment.TONE_MAPPER_FILMIC if quality_level>=2 else Environment.TONE_MAPPER_LINEAR
 	sky.tonemap_white = 2.0
-	sky.tonemap_exposure = 1.04
+	sky.tonemap_exposure = 1.0
 	village.set_quality(quality_level)
 	atmosphere.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
@@ -565,7 +578,7 @@ func apply_graphics(level: int) -> void:
 		grade_overlay.visible = quality_level>0
 		grade_material.set_shader_parameter("quality",quality_level)
 		grade_material.set_shader_parameter("highlight_strength",0.08)
-		grade_material.set_shader_parameter("saturation",[1.0,1.12,1.20,1.25][quality_level])
+		grade_material.set_shader_parameter("saturation",[1.0,1.09,1.13,1.15][quality_level])
 	update_solar_lighting(life.clock/life.DAY_SECONDS)
 
 func save_game() -> void:

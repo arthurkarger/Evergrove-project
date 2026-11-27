@@ -2,7 +2,7 @@ extends RefCounted
 
 const PRIMARY := "user://homestead-v1.json"
 const Maps = preload("res://natural_maps.gd")
-const STARTERS := ["vale","pinhal","pomar"]
+const STARTERS := ["vale","pinhal","pomar","brejo"]
 static var current := 1
 
 static func slot(number: int) -> String:

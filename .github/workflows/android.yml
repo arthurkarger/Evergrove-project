@@ -79,6 +79,15 @@ jobs:
           godot --headless --path . --script res://tests/village_life.gd 2>&1 | tee "$RUNNER_TEMP/village-life-test.log"
           grep -Fx 'Village Life integration failures: 0' "$RUNNER_TEMP/village-life-test.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/village-life-test.log"; then exit 1; fi
+      - name: Verify all four islands and bridge collisions
+        shell: bash
+        run: |
+          set -euo pipefail
+          for map in vale pinhal pomar brejo; do
+            XDG_DATA_HOME="$(mktemp -d)" godot --headless --fixed-fps 60 --script tests/world_polish.gd -- "$map" 2>&1 | tee "$RUNNER_TEMP/map-$map.log"
+            grep -Fq "world polish failures: 0" "$RUNNER_TEMP/map-$map.log"
+            if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/map-$map.log"; then exit 1; fi
+          done
       - name: Verify house, construction and storage
         shell: bash
         env:

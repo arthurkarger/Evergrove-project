@@ -173,7 +173,7 @@ func draw_bed(i: int) -> void:
 
 func refresh_resources() -> void:
 	for i in resources.size():
-		resources[i].node.visible = not dormant.has(str(i))
+		resources[i].node.visible = not dormant.has(str(i)) and not resources[i].get("unplaced",false)
 
 func advance(delta: float) -> bool:
 	var new_day:=false

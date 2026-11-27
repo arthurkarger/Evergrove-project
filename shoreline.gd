@@ -2,6 +2,13 @@ extends RefCounted
 # Continuous distances in world units. Positive values lie on the dry side.
 const AREA := Rect2i(-44,-36,89,73)
 const EXTENT := Vector2(100,84)
+# Shallow coves interrupt the outer beach at different scales on each island.
+const COVES := [
+	[Vector3(-39,-11,8),Vector3(24,31,7)],
+	[Vector3(31,-25,12),Vector3(-39,9,6)],
+	[Vector3(-28,30,11),Vector3(36,8,8)],
+	[Vector3(-36,18,12),Vector3(22,-30,10)]]
+var classic_coast:=false
 var variant: int
 var phase: float
 var side: float
@@ -20,7 +27,12 @@ func _init(layout: int, world_seed: int) -> void:
 func coast(p: Vector2) -> float:
 	var a:=atan2(p.y/31.5,p.x/38.5)
 	var norm:=pow(pow(absf(p.x/38.5),4)+pow(absf(p.y/31.5),4),0.25)
-	return (1.0-norm)*34 + 1.35*sin(3*a+phase)+0.85*sin(5*a-phase)+0.45*cos(8*a+phase) + (0.0 if variant<0 or legacy_channel else 1.15*sin(2*a+variant)*cos(3*a-phase))
+	var distance:=(1.0-norm)*34 + 1.35*sin(3*a+phase)+0.85*sin(5*a-phase)+0.45*cos(8*a+phase) + (0.0 if variant<0 or legacy_channel else 1.15*sin(2*a+variant)*cos(3*a-phase))
+
+	if variant>=0 and not classic_coast and not legacy_channel:
+		for c: Vector3 in COVES[variant]:
+			distance=smooth_union(distance,p.distance_to(Vector2(c.x,c.y))-c.z,3.5)
+	return distance
 
 # Each natural map has a continuous inlet from the ocean, through its lake,
 # and a short rounded upstream arm. The southern land corridor remains open.
@@ -58,22 +70,46 @@ func inland(p: Vector2) -> float:
 func distance_at(p: Vector2) -> float:
 	return minf(coast(p),inland(p))
 
+# Terrain providers expose surface height independently of the X/Z tile grid.
+func height_at(_p: Vector2) -> float:
+	return 0.0
+
+func beach_width(p: Vector2) -> float:
+	if variant<0 or legacy_channel: return 3.25
+	var angle:=atan2(p.y/31.5,p.x/38.5)
+	return 3.05+.85*sin(2.0*angle+phase)+.55*cos(3.0*angle-variant)
+
 func terrain_at(p: Vector2) -> String:
 	var sea:=coast(p)
 	var fresh:=inland(p)
 	if sea<0: return "ocean"
 	if fresh<0: return "freshwater"
 	if sea<.85 or fresh<.35: return "wet_bank"
-	if sea<3.25 or fresh<.75: return "sand"
+	if sea<beach_width(p) or fresh<.75: return "sand"
 	return "grass"
 
-func texture() -> ImageTexture:
+func texture(paths: Array=[]) -> ImageTexture:
 	var size:=Vector2i(EXTENT)*3
-	var img:=Image.create(size.x,size.y,false,Image.FORMAT_RG8)
+	var img:=Image.create(size.x,size.y,false,Image.FORMAT_RGBA8)
 	for y in size.y:
 		for x in size.x:
 			var p:=(Vector2(x,y)+Vector2.ONE*0.5)/3.0-EXTENT*0.5
-			img.set_pixel(x,y,Color(clampf(coast(p)/16+0.5,0,1),clampf(inland(p)/16+0.5,0,1),0))
+			img.set_pixel(x,y,Color(clampf(coast(p)/16+0.5,0,1),clampf(inland(p)/16+0.5,0,1),beach_width(p)/8.0,0.0))
+	# Bake trail coverage only inside each short segment's pixel bounds.
+	for segment in paths:
+		var a: Vector2=segment[0]
+		var b: Vector2=segment[1]
+		var width: float=segment[2]
+		var box:=Rect2(a,Vector2.ZERO).expand(b).grow(width*.5+.55)
+		var lo:=Vector2i(((box.position+EXTENT*.5)*3).floor()).max(Vector2i.ZERO)
+		var hi:=Vector2i(((box.end+EXTENT*.5)*3).ceil()).min(size)
+		for y in range(lo.y,hi.y):
+			for x in range(lo.x,hi.x):
+				var p:=(Vector2(x,y)+Vector2.ONE*.5)/3.0-EXTENT*.5
+				var d:=p.distance_to(Geometry2D.get_closest_point_to_segment(p,a,b))
+				var col:=img.get_pixel(x,y)
+				col.a=maxf(col.a,1.-smoothstep(width*.25,width*.5+.45,d))
+				img.set_pixel(x,y,col)
 	return ImageTexture.create_from_image(img)
 
 func add_boundary(v) -> void:
@@ -96,14 +132,26 @@ func add_boundary(v) -> void:
 					var db:=distance_at(b)
 					if (da<0)!=(db<0): hits.append(a.lerp(b,da/(da-db)))
 				if hits.size()!=2 or hits[0].distance_squared_to(hits[1])<0.000001: continue
-				if bridge.has_area() and bridge.has_point((hits[0]+hits[1])*.5): continue
-				var a:=Vector3(hits[0].x,-0.25,hits[0].y)
-				var b:=Vector3(hits[1].x,-0.25,hits[1].y)
-				var up:=Vector3.UP*1.8
-				faces.append_array(PackedVector3Array([a,b,b+up,a,b+up,a+up]))
+				var a:=hits[0]
+				var b:=hits[1]
+				if bridge.has_area():
+					if a.y>b.y:
+						a=hits[1]
+						b=hits[0]
+					if minf(a.x,b.x)>=bridge.position.x and maxf(a.x,b.x)<=bridge.end.x and b.y>=bridge.position.y and a.y<=bridge.end.y:
+						if a.y<bridge.position.y: append_wall(faces,a,a.lerp(b,(bridge.position.y-a.y)/(b.y-a.y)))
+						if b.y>bridge.end.y: append_wall(faces,a.lerp(b,(bridge.end.y-a.y)/(b.y-a.y)),b)
+						continue
+				append_wall(faces,a,b)
 	var shape:=ConcavePolygonShape3D.new()
 	shape.backface_collision=true
 	shape.set_faces(faces)
 	var collider:=CollisionShape3D.new()
 	collider.shape=shape
 	v.terrain.add_child(collider)
+
+func append_wall(faces: PackedVector3Array,from: Vector2,to: Vector2) -> void:
+	var a:=Vector3(from.x,height_at(from)-.25,from.y)
+	var b:=Vector3(to.x,height_at(to)-.25,to.y)
+	var up:=Vector3.UP*1.8
+	faces.append_array(PackedVector3Array([a,b,b+up,a,b+up,a+up]))

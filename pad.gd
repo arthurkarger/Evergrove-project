@@ -15,11 +15,11 @@ func _draw():
 	draw_circle(p+offset,22,Color(1,0.96,0.83,0.55))
 func _input(event):
 	if event is InputEventScreenTouch:
-		if event.pressed and finger<0 and event.position.x<get_viewport_rect().size.x*0.28 and event.position.y>get_viewport_rect().size.y*0.35:
+		if event.pressed and not event.canceled and finger<0 and event.position.x<get_viewport_rect().size.x*0.28 and event.position.y>get_viewport_rect().size.y*0.35:
 			finger=event.index
 			center=event.position
 			queue_redraw()
-		elif not event.pressed and event.index==finger:
+		elif (event.canceled or not event.pressed) and event.index==finger:
 			finger=-1
 			offset=Vector2.ZERO
 			world.set("touch",Vector2.ZERO)
@@ -27,4 +27,12 @@ func _input(event):
 	elif event is InputEventScreenDrag and event.index==finger:
 		offset=(event.position-center).limit_length(55)
 		world.set("touch",offset/55)
+		queue_redraw()
+
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT] and is_instance_valid(world):
+		finger=-1
+		offset=Vector2.ZERO
+		world.set("touch",Vector2.ZERO)
 		queue_redraw()

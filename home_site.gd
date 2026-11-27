@@ -224,7 +224,8 @@ func garden_model(node: Node3D,id: String,preview: bool) -> void:
 
 func locate(node: Node3D,room: int,tile: Vector2i,id: String,r: int) -> void:
 	var center := Grid.cell_center(tile,state.size_of(id,r))
-	node.position=base(room)+Vector3(center.x,0.06,center.y)
+	var height: float=state.world_grid.height_at(center) if room==-1 else 0.0
+	node.position=base(room)+Vector3(center.x,height+.06,center.y)
 	node.rotation.y=r*PI/2
 
 func entrance(obj: Dictionary) -> Vector2:

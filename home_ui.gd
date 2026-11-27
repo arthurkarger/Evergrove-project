@@ -95,11 +95,13 @@ func setup(game) -> void:
 	board.hide()
 
 func open(which: String="home") -> void:
+	finger=-2
 	world.toggle_bag(true)
 	world.hud.visible=false
 	menu.show()
 	board.hide()
 	page=which
+	if which in ["craft","benchcraft"]: quantity=1
 	note.text=""
 	scroll.scroll_vertical=0
 	draw()
@@ -128,10 +130,11 @@ func link(label_text: String,which: String) -> void:
 
 func draw() -> void:
 	var crafting := page in ["craft","benchcraft"]
-	panel.custom_minimum_size.x=740 if crafting else 470
+	var viewport_size:=menu.get_viewport_rect().size
+	panel.custom_minimum_size.x=minf(740 if crafting else 470,viewport_size.x-16)
 	scroll.visible=not crafting
 	workshop.visible=crafting
-	workshop.custom_minimum_size.y=356 if crafting else 0
+	workshop.custom_minimum_size.y=minf(356,maxf(175,viewport_size.y-155)) if crafting else 0
 	for container in [options,workshop]:
 		for child in container.get_children():
 			container.remove_child(child)
@@ -248,18 +251,7 @@ func workshop_label(parent: Control,value: String,size: int=16) -> Label:
 	return label
 
 func craft_block_reason(id: String) -> String:
-	var house=world.life.house
-	var bag=world.life.bag
-	if id.begins_with("iron_") and (house.made<5 or page!="benchcraft"):
-		return "Use uma bancada após fabricar 5 itens (%d/5)." % mini(5,house.made)
-	for k in house.RECIPES[id]:
-		if bag.quantity(k)<house.RECIPES[id][k]*quantity: return "Materiais insuficientes."
-	if id in bag.TOOLS:
-		var copy = preload("res://backpack.gd").new()
-		copy.slots=bag.slots.duplicate(true)
-		for k in house.RECIPES[id]: copy.remove_items(k,house.RECIPES[id][k]*quantity)
-		if not copy.add(id,quantity): return "Mochila cheia."
-	return ""
+	return world.life.house.prepare_craft(id,world.life.bag,quantity,page=="benchcraft").reason
 
 func draw_workshop() -> void:
 	var house=world.life.house
@@ -480,7 +472,10 @@ func remove_item() -> void:
 	else: hint.text="Esvazie o baú antes de removê-lo."
 
 func board_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch: pointer(event.index,event.position,event.pressed)
+	if event is InputEventScreenTouch:
+		if event.canceled:
+			if event.index==finger: finger=-2
+		else: pointer(event.index,event.position,event.pressed)
 	elif event is InputEventScreenDrag and event.index==finger: motion(event.position)
 	elif event is InputEventMouseButton and event.device!=-1 and event.button_index==MOUSE_BUTTON_LEFT: pointer(-1,event.position,event.pressed)
 	elif event is InputEventMouseMotion and finger==-1 and event.device!=-1: motion(event.position)

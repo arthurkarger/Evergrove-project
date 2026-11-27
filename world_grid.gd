@@ -7,6 +7,10 @@ var seed_value: int
 var cultivated := {}
 var reserved := {}
 var terrain_provider: Callable
+var height_provider: Callable
+
+func height_at(p: Vector2) -> float:
+	return height_provider.call(p) if height_provider.is_valid() else 0.0
 
 func terrain_at(cell: Vector2i) -> String:
 	if not bounds.has_point(cell): return "outside"
