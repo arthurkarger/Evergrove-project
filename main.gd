@@ -369,7 +369,7 @@ shader_type canvas_item;
 render_mode unshaded, blend_disabled;
 uniform sampler2D world_screen : hint_screen_texture, repeat_disable, filter_nearest;
 uniform float highlight_strength : hint_range(0.0, 0.6) = 0.16;
-uniform float saturation : hint_range(0.0, 1.2) = 1.0;
+uniform float saturation : hint_range(0.0, 1.5) = 1.0;
 uniform int quality = 2;
 uniform float dusk = 0.0;
 uniform float daylight = 1.0;
