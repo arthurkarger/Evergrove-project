@@ -92,6 +92,9 @@ func build_paths() -> void:
 	bench(14,6)
 
 func build_homes() -> void:
+	cottage(-7,19.45,"628693","f3d1a0")
+	path_between(Vector2(-10,16),Vector2(-10,21.65),1.5)
+	path_between(Vector2(-10,21.65),Vector2(-7,21.65),1.5)
 	cottage(-24,-11,"946e57","e6cfa8")
 	cottage(13,12.8,"96778c","efd0b5")
 	cottage(-3,10,"577453","f3da9e")

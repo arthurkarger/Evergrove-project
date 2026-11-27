@@ -16,6 +16,8 @@ var autosave := 0.0
 var ui_elapsed := 0.0
 var town := preload("res://neighbors.gd").new()
 var village_menu := preload("res://village_menu.gd").new()
+var site := preload("res://home_site.gd").new()
+var home_ui := preload("res://home_ui.gd").new()
 var focus_kind := ""
 var focus_index := -1
 var initialized := false
@@ -23,19 +25,38 @@ var initialized := false
 func make_sprite(step: int) -> ImageTexture:
 	var img := Image.create(16,24,false,Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
-	img.fill_rect(Rect2i(4,2,8,8),Color("674637"))
+	var look: Array=life.house.look
+	var hair := Color(["674637","ad804d","393236","ad624c"][int(look[1])])
+	var fabric := Color(["517b91","6e8964","91596b","b29554"][int(look[3])])
+	img.fill_rect(Rect2i(4,2,8,8),hair.darkened(0.15))
 	img.fill_rect(Rect2i(5,5,7,6),Color("f2c39b"))
-	img.fill_rect(Rect2i(4,3,8,3),Color("80583d"))
+	img.fill_rect(Rect2i(4,3,8,3),hair)
 	img.set_pixel(6,7,Color("302b31"))
 	img.set_pixel(10,7,Color("302b31"))
-	img.fill_rect(Rect2i(4,11,8,7),Color("517b91"))
+	img.fill_rect(Rect2i(4,11,8,7),fabric)
 	img.fill_rect(Rect2i(2,12,2,5),Color("f2c39b"))
 	img.fill_rect(Rect2i(12,12,2,5),Color("f2c39b"))
 	img.fill_rect(Rect2i(5,18,3,4-step),Color("394754"))
 	img.fill_rect(Rect2i(9,18,3,3+step),Color("394754"))
 	img.fill_rect(Rect2i(4,22-step,4,2),Color("49392e"))
 	img.fill_rect(Rect2i(9,21+step,4,2),Color("49392e"))
+	if look[0]==1: img.fill_rect(Rect2i(4,5,4,3),hair)
+	if look[0]==2: img.fill_rect(Rect2i(7,0,5,4),hair)
+	if look[2]==1:
+		img.fill_rect(Rect2i(5,13,6,5),Color("556570"))
+		img.fill_rect(Rect2i(5,11,1,3),Color("556570"))
+		img.fill_rect(Rect2i(10,11,1,3),Color("556570"))
+	if look[2]==2:
+		img.fill_rect(Rect2i(4,11,8,2),Color("e8cb98"))
+		img.fill_rect(Rect2i(9,12,2,4),Color("e8cb98"))
 	return ImageTexture.create_from_image(img)
+
+func update_look() -> void:
+	textures=[make_sprite(0),make_sprite(1)]
+	sprite.texture=textures[0]
+
+func door(i: int) -> Vector2:
+	return life.house.DOOR if i==6 else town.DOORS[i]
 func _ready():
 	var env := WorldEnvironment.new()
 	var e := sky
@@ -87,6 +108,11 @@ func _ready():
 	hud.bag_toggled.connect(toggle_bag)
 	hud.moved.connect(move_item)
 	add_child(town)
+	add_child(site)
+	site.setup(self)
+	add_child(home_ui)
+	home_ui.setup(self)
+	hud.home_requested.connect(home_ui.open)
 	add_child(village_menu)
 	village_menu.build(self)
 	village_menu.closed.connect(close_social)
@@ -136,6 +162,14 @@ func close_social() -> void:
 
 func interact_focus() -> void:
 	match focus_kind:
+		"chest": home_ui.open_chest(focus_index)
+		"bed":
+			life.advance(life.DAY_SECONDS-life.clock)
+			life.clock=0
+			town.step(0,game_hour(),life.room)
+			save_game()
+			update_world_ui()
+			hud.show_note("Bom dia · dia %d" % life.day)
 		"person","shop":
 			toggle_bag(true)
 			hud.visible = false
@@ -146,7 +180,7 @@ func interact_focus() -> void:
 				life.room = focus_index
 				player.position = town.origin(life.room)+Vector3(0,0.52,2.25)
 			else:
-				player.position = town.outdoor(town.DOORS[life.room])+Vector3(0,0.52,0.55)
+				player.position = town.outdoor(door(life.room))+Vector3(0,0.52,0.55)
 				life.room = -1
 			player.velocity = Vector3.ZERO
 			camera.position = player.position+Vector3(0,10,10)
@@ -171,12 +205,20 @@ func use_item() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not initialized or not event is InputEventKey or not event.pressed or event.echo: return
+	if home_ui.menu.visible or site.active:
+		if event.keycode==KEY_ESCAPE: home_ui.close()
+		elif site.active and event.keycode==KEY_R: home_ui.rotate_item()
+		else: return
+		get_viewport().set_input_as_handled()
+		return
 	if village_menu.shade.visible:
 		if event.keycode in [KEY_ESCAPE,KEY_E,KEY_I]:
 			village_menu.close()
 			get_viewport().set_input_as_handled()
 		return
 	match event.keycode:
+		KEY_B:
+			if not hud.shade.visible: home_ui.open()
 		KEY_I, KEY_TAB: hud.toggle()
 		KEY_ESCAPE:
 			if hud.shade.visible: hud.toggle()
@@ -210,13 +252,13 @@ func update_world_ui() -> void:
 	else:
 		if life.target>=0:
 			best = Vector2(player.position.x-life.marker.position.x,player.position.z-life.marker.position.z).length()
-		for i in town.DOORS.size():
-			var distance := Vector2(player.position.x,player.position.z).distance_to(town.DOORS[i])
+		for i in 7:
+			var distance := Vector2(player.position.x,player.position.z).distance_to(door(i))
 			if distance<best:
 				best = distance
 				focus_index = i
 				focus_kind = "door"
-				hud.action.text = "Armazém" if i==5 else "Casa de "+str(life.social.PEOPLE[i][0])
+				hud.action.text = "Minha casa" if i==6 else ("Armazém" if i==5 else "Casa de "+str(life.social.PEOPLE[i][0]))
 	for i in town.actors.size():
 		var actor := town.actors[i]
 		if not actor.visible: continue
@@ -226,6 +268,21 @@ func update_world_ui() -> void:
 			focus_kind = "person"
 			focus_index = i
 			hud.action.text = "Falar · "+str(life.social.PEOPLE[i][0])
+	if life.room==6 and (player.position-site.cabin.position-Vector3(-2.85,0.51,-1.35)).length()<1.9:
+		focus_kind="bed"
+		hud.action.text="Dormir até amanhã"
+		best=1.1
+	if life.room in [-1,6]:
+		var local:=site.player_flat()
+		for i in life.house.objects.size():
+			var obj: Dictionary=life.house.objects[i]
+			if obj.room!=life.room or obj.id!="chest": continue
+			var d:=local.distance_to(Vector2(obj.x,obj.z))
+			if d<best:
+				best=d
+				focus_index=i
+				focus_kind="chest"
+				hud.action.text="Abrir baú"
 	if focus_kind!="":
 		hud.action.disabled = false
 		life.marker.hide()
@@ -245,7 +302,7 @@ func save_game() -> void:
 		else:
 			var local := player.position-town.origin(life.room)
 			life.room_pos = Vector2(local.x,local.z)
-			life.save_progress(town.outdoor(town.DOORS[life.room]))
+			life.save_progress(town.outdoor(door(life.room)))
 		if life.save_failed: hud.show_note("Falha ao salvar o progresso")
 
 func _notification(what: int) -> void:
@@ -256,6 +313,10 @@ func _exit_tree() -> void:
 	save_game()
 
 func _physics_process(delta):
+	if site.active or site.blend>0:
+		site.camera_step(delta)
+		if site.active: return
+	if home_ui.menu.visible: return
 	if hud.shade.visible or village_menu.shade.visible: return
 	var new_day := life.advance(delta)
 	town.step(delta,game_hour(),life.room)
@@ -281,9 +342,9 @@ func _physics_process(delta):
 		player.position.z = clampf(player.position.z,-Village.LIMIT_Z,Village.LIMIT_Z)
 	else:
 		var center := town.origin(life.room)
-		player.position.x = clampf(player.position.x,center.x-3.6,center.x+3.6)
+		player.position.x = clampf(player.position.x,center.x-3.6,center.x+(7.6 if life.room==6 and life.house.expanded else 3.6))
 		player.position.z = clampf(player.position.z,-2.7,2.7)
 	elapsed += delta
 	sprite.texture = textures[int(elapsed*9)%2] if d.length()>0.1 else textures[0]
 	if abs(d.x)>0.1: sprite.flip_h = d.x<0
-	camera.position = camera.position.lerp(player.position+Vector3(0,10,10),1-exp(-delta*8))
+	if site.blend==0: camera.position = camera.position.lerp(player.position+Vector3(0,10,10),1-exp(-delta*8))

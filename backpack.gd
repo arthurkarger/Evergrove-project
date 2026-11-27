@@ -25,7 +25,7 @@ func add(id: String, count: int) -> bool:
 	if count > capacity:
 		return false
 	for empty in [false,true]:
-		for i in SIZE:
+		for i in slots.size():
 			var item = slots[i]
 			if empty:
 				if item != null: continue

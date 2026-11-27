@@ -18,6 +18,7 @@ var shapes := {}
 var materials := {}
 var target := -1 # Plots first, then forage sites.
 var saved_position := Vector3(0,0.5,6)
+var house := preload("res://home_state.gd").new()
 var social := preload("res://social.gd").new()
 var room := -1
 var room_pos := Vector2(0,2.2)
@@ -199,7 +200,7 @@ func interact() -> String:
 	return message
 
 func save_progress(pos: Vector3) -> void:
-	var data := {"version":1,"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	var data := {"version":1,"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	var f := FileAccess.open(SAVE+".tmp",FileAccess.WRITE)
 	save_failed = true
 	if f == null: return
@@ -225,9 +226,10 @@ func load_progress() -> void:
 	if not data.get("pos") is Array or data.pos.size()!=2: return
 	social.coins = maxi(0,int(data.get("coins",35)))
 	social.friends = data.get("friends",{})
-	room = clampi(int(data.get("room",-1)),-1,5)
+	house.restore(data.get("house",{}))
+	room = clampi(int(data.get("room",-1)),-1,6)
 	var local: Array = data.get("local",[0,2.2])
-	room_pos = Vector2(clampf(local[0],-3.6,3.6),clampf(local[1],-2.7,2.7))
+	room_pos = Vector2(clampf(local[0],-3.6,7.6 if room==6 and house.expanded else 3.6),clampf(local[1],-2.7,2.7))
 	bag.slots = data.slots
 	bag.selected = clampi(int(data.get("quick",0)),0,Bag.QUICK-1)
 	day = maxi(1,int(data.get("day",1)))

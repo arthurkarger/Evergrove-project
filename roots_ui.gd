@@ -1,5 +1,6 @@
 extends CanvasLayer
 
+signal home_requested
 signal use_requested
 signal picked(slot: int)
 signal bag_toggled(open: bool)
@@ -79,6 +80,11 @@ func build(model) -> void:
 	decorate(pack)
 	top.add_child(pack)
 	pack.pressed.connect(toggle)
+	var house_button := Button.new()
+	house_button.text="Lar"
+	decorate(house_button)
+	top.add_child(house_button)
+	house_button.pressed.connect(home_requested.emit)
 	top.add_child(clock_label)
 	clock_label.add_theme_constant_override("outline_size",4)
 	clock_label.add_theme_color_override("font_outline_color",Color("344538"))
