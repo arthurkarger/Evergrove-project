@@ -2,6 +2,7 @@ extends Node3D
 # Original stylized, textured characters. The mesh is shared across all villagers.
 static var ball: SphereMesh
 static var textures: Dictionary = {}
+static var quality_level := 2
 var body: Node3D
 var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
@@ -25,7 +26,7 @@ static func finish_material(tint: Color, cloth: bool) -> StandardMaterial3D:
 		mat.albedo_texture = ImageTexture.create_from_image(img)
 		mat.roughness = 0.92
 		mat.metallic_specular = 0.05
-		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		textures[key] = mat
 	return textures[key]
 
@@ -34,8 +35,8 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 		ball = SphereMesh.new()
 		ball.radius = 0.5
 		ball.height = 1.0
-		ball.radial_segments = 16
-		ball.rings = 8
+		ball.radial_segments = [8,12,16,24][quality_level]
+		ball.rings = [4,6,8,12][quality_level]
 	var part := MeshInstance3D.new()
 	part.name = label
 	part.mesh = ball
@@ -115,3 +116,12 @@ func pose(direction: Vector2, delta: float) -> void:
 		legs[i].rotation.x = lerpf(legs[i].rotation.x,swing*side,minf(delta*16.0,1.0))
 		arms[i].rotation.x = lerpf(arms[i].rotation.x,-swing*side*0.72,minf(delta*16.0,1.0))
 	body.position.y = ground_offset + (absf(sin(walk_time))*0.035 if moving else 0.0)
+
+static func set_quality(level: int) -> void:
+	quality_level = clampi(level,0,3)
+	if ball != null:
+		ball.radial_segments = [8,12,16,24][quality_level]
+		ball.rings = [4,6,8,12][quality_level]
+	for key in textures:
+		var mat: StandardMaterial3D = textures[key]
+		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
