@@ -5,6 +5,11 @@ var bounds: Rect2i
 var map_id: String
 var seed_value: int
 var reserved := {}
+var terrain_provider: Callable
+
+func terrain_at(cell: Vector2i) -> String:
+	if not bounds.has_point(cell): return "outside"
+	return terrain_provider.call(Vector2(cell)) if terrain_provider.is_valid() else "grass"
 
 func _init(area := Rect2i(-30,-23,61,47), id := "starter_village", map_seed := 0) -> void:
 	bounds=area

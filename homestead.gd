@@ -267,4 +267,4 @@ func load_progress() -> void:
 	dormant = data.get("dormant",{})
 	for key in dormant: dormant[key] = int(dormant[key])
 	protect_existing=false
-	saved_position = Vector3(clampf(data.pos[0],-30,30),0.51,clampf(data.pos[1],-23,23))
+	saved_position = Vector3(clampf(data.pos[0],-44,44),0.51,clampf(data.pos[1],-36,36))

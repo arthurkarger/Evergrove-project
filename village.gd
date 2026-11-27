@@ -2,10 +2,9 @@ extends Node3D
 
 const BlenderModels = preload("res://blender_models.gd")
 const Starter = preload("res://starter_layout.gd")
+var shoreline:=preload("res://shoreline.gd").new(-1,0)
 var landscape: RefCounted
 var world_grid = Starter.new_grid()
-const LIMIT_X := 30
-const LIMIT_Z := 23
 const WOOD := "906744"
 const TRAIL := "d2b58e"
 
@@ -67,8 +66,10 @@ func _ready() -> void:
 	shaft_material.shader=preload("res://shaders/sunshaft.gdshader")
 	meshes["lantern_glass"] = BoxMesh.new()
 	if landscape:
+		shoreline=landscape.shoreline
 		landscape.render(self)
 	else:
+		world_grid.bounds=shoreline.AREA
 		build_paths()
 		build_homes()
 		build_lake()
@@ -77,6 +78,16 @@ func _ready() -> void:
 		beautify_starter()
 		plant_grass()
 		build_lamps()
+	wall(Vector3(0,-0.3,0),Vector3(94,0.6,78))
+	world_grid.terrain_provider=shoreline.terrain_at
+	shoreline.add_boundary(self)
+	var plane:=PlaneMesh.new()
+	plane.size=Vector2.ONE
+	meshes["water"]=plane
+	for z in range(-60,61,8):
+		for x in range(-68,69,8):
+			if shoreline.distance_at(Vector2(x,z))<8:
+				piece("water",Vector3(x,0.052,z),Vector3(8,1,8),"79bec0")
 	flush_batches()
 	flush_imported()
 	setup_lake_probe()
@@ -143,7 +154,7 @@ uniform int quality = 2;
 #ifdef CLEAR_WATER
 uniform sampler2D scenery : hint_screen_texture, repeat_disable, filter_linear;
 #endif
-uniform bool mapped_shore = false;
+
 uniform sampler2D shore_map : repeat_disable, filter_linear;
 uniform vec4 sky_tint : source_color = vec4(0.55,0.72,0.82,1.0);
 uniform float daylight = 1.0;
@@ -153,8 +164,11 @@ void vertex() {
 }
 void fragment() {
 	vec2 p = world_pos.xz;
-	vec2 q = (p - vec2(22.0, -7.0)) / vec2(6.0, 8.0);
-	float shore = length(q);
+	vec2 banks = (texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
+	float distance_to_land = -min(banks.x,banks.y);
+	if (distance_to_land<0.) discard;
+	float depth = smoothstep(0.,5.0,distance_to_land);
+	float shore = 1.0-depth;
 	float t = TIME;
 	vec2 flow = normalize(vec2(0.83,0.56));
 	float a = dot(p,flow)*2.5 - t*1.35;
@@ -163,15 +177,11 @@ void fragment() {
 	float wave_a = sin(a+0.65*sin(b*0.56));
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
-	float depth = 1.0-smoothstep(0.18,1.0,shore);
-	if (mapped_shore) {
-		depth = texture(shore_map,(p+vec2(30.5,23.5))/vec2(61.,47.)).r;
-		shore = 1.0-depth;
-	}
-	vec3 sand = vec3(0.25,0.65,0.49);
-	vec3 deep = vec3(0.035,0.31,0.46);
+	vec3 sand = vec3(0.24,0.66,0.52);
+	vec3 deep = mix(vec3(0.045,0.33,0.36),vec3(0.025,0.26,0.42),step(banks.x,banks.y));
 	vec3 water = mix(sand,deep,depth);
-	float crest = 0.0;
+	float wash = distance_to_land - (0.17+0.09*sin(t*1.3+dot(p,vec2(.7,.43))));
+	float crest = (1.0-smoothstep(0.035,0.14,abs(wash))) * (0.10+0.07*wave_b);
 	float nx = 0.0;
 	float nz = 0.0;
 	if (quality>0) {
@@ -212,6 +222,7 @@ void fragment() {
 shader_type spatial;
 render_mode diffuse_burley, specular_disabled;
 uniform int quality = 2;
+uniform sampler2D shore_map : repeat_disable, filter_linear;
 uniform sampler2D art_grass : source_color, repeat_enable, filter_linear_mipmap;
 uniform bool has_art_grass = false;
 varying vec3 world_pos;
@@ -238,6 +249,11 @@ void fragment() {
 		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.65);
 	}
 	ALBEDO = grass_base * mix(vec3(1.),COLOR.rgb / vec3(.58,.71,.47),0.28) + vec3(shade, shade, shade * 0.55);
+	vec2 bank=(texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
+	float wet=min(bank.x,bank.y);
+	float edge=min(bank.x-2.75,bank.y-0.85)+patch*0.22;
+	vec3 beach=mix(vec3(.51,.39,.225),vec3(.86,.72,.45),smoothstep(-.45,1.20,wet));
+	ALBEDO=mix(beach*(1.+0.044*detail+0.023*patch),ALBEDO,smoothstep(-.55,.55,edge));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -278,11 +294,9 @@ func flush_batches() -> void:
 	var grass_material := landscape_material(false)
 	water_simple=landscape_material(true)
 	water_clear=landscape_material(true,true)
-	if landscape:
-		var depth: ImageTexture=landscape.depth_texture()
-		for mat in [water_simple,water_clear]:
-			mat.set_shader_parameter("shore_map",depth)
-			mat.set_shader_parameter("mapped_shore",true)
+	var banks:=shoreline.texture()
+	for mat in [grass_material,water_simple,water_clear]:
+		mat.set_shader_parameter("shore_map",banks)
 	lake_material=water_clear
 	foliage_material = make_foliage_material()
 	surface_materials = {"bark":make_surface_material(0),"stone":make_surface_material(1),"path_box":make_surface_material(2),"path_disc":make_surface_material(2),"roof_tiles":make_surface_material(3),"wood":make_surface_material(4)}
@@ -462,19 +476,6 @@ func build_lake() -> void:
 		for iz in range(-16,3):
 			if (Vector2(ix-x,iz-z)/Vector2(6.9,8.9)).length()<=1.0:
 				world_grid.reserve_rect(Rect2i(ix,iz,1,1),"Lago e margem")
-	piece("shore",Vector3(x,0.065,z),Vector3(12.8,0.09,16.8),"c4ae83")
-	piece("water",Vector3(x,0.12,z),Vector3(12,0.06,16),"77b8b3")
-	# Match the faceted waterline, with vertical sides above the player capsule.
-	var outline := PackedVector3Array()
-	for i in 16:
-		var a := TAU*i/16.0
-		for y in [-0.25,1.3]:
-			outline.append(Vector3(x+6*cos(a),y,z+8*sin(a)))
-	var hull := ConvexPolygonShape3D.new()
-	hull.points = outline
-	var bank := CollisionShape3D.new()
-	bank.shape = hull
-	terrain.add_child(bank)
 	for i in 7:
 		var a := i*2.4
 		var p := Vector3(x+4.9*cos(a),0.17,z+6.4*sin(a))
@@ -639,6 +640,7 @@ void fragment() {
 	return mat
 
 func clear_for_grass(p: Vector2) -> bool:
+	if shoreline.terrain_at(p)!="grass": return false
 	if landscape and world_grid.reserved.has(Vector2i(p.round())): return false
 	if Rect2(-5,16,11,7).has_point(p) or Rect2(2,3.5,7,6).has_point(p):
 		return false
@@ -831,7 +833,7 @@ func setup_lake_probe() -> void:
 	lake_probe=ReflectionProbe.new()
 	lake_probe.position=Vector3(22,1.25,-7)
 	if landscape:
-		var bank: Vector2i=landscape.water.keys()[landscape.water.size()/2]
+		var bank: Vector2=shoreline.lake
 		lake_probe.position=Vector3(bank.x,1.25,bank.y)
 	lake_probe.size=Vector3(21,12,25)
 	lake_probe.intensity=0.65

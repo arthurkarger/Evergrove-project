@@ -46,9 +46,9 @@ func check_frontier(w) -> void:
 	var layouts: Array=[]
 	for key in maps.MAPS:
 		var layout=maps.new(key,maps.MAPS[key][1])
-		check(not layout.trees.is_empty() and not layout.water.is_empty(),"Natural terrain "+key)
-		check(not layouts.has(layout.water),"Distinct waterways")
-		layouts.append(layout.water)
+		check(not layout.trees.is_empty() and layout.shoreline.terrain_at(layout.shoreline.lake)=="freshwater","Natural terrain "+key)
+		check(not layouts.has(layout.shoreline.lake),"Distinct waterways")
+		layouts.append(layout.shoreline.lake)
 	var life=w.life
 	var s=life.settlement
 	check(w.village.house_centers.size()==1 and w.town.actors.is_empty(),"Single starter cottage")

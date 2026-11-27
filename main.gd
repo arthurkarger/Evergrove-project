@@ -165,7 +165,7 @@ func configure_world_grid() -> void:
 		var p: Vector3=resource.node.position
 		if village.landscape:
 			var cell:=Vector2i(roundi(p.x),roundi(p.z))
-			while grid.reserved.has(cell):
+			while grid.reserved.has(cell) or village.landscape.original_water_cells.has(cell) or life.house.at(-1,cell)>=0:
 				cell.x=wrapi(cell.x+1,-29,30)
 			resource.node.position=Vector3(cell.x,p.y,cell.y)
 			p=resource.node.position
@@ -561,8 +561,8 @@ func _physics_process(delta):
 	player.velocity = Vector3(d.x*4.0,-2,d.y*4.0)
 	player.move_and_slide()
 	if life.room<0:
-		player.position.x = clampf(player.position.x,-Village.LIMIT_X,Village.LIMIT_X)
-		player.position.z = clampf(player.position.z,-Village.LIMIT_Z,Village.LIMIT_Z)
+		player.position.x = clampf(player.position.x,village.world_grid.bounds.position.x,village.world_grid.bounds.end.x-1)
+		player.position.z = clampf(player.position.z,village.world_grid.bounds.position.y,village.world_grid.bounds.end.y-1)
 	else:
 		var center := town.origin(life.room)
 		player.position.x = clampf(player.position.x,center.x-3.6,center.x+(7.6 if life.room==6 and life.house.expanded else 3.6))

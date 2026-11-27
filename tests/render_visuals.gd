@@ -15,11 +15,27 @@ func run() -> void:
 	var w=preload("res://main.tscn").instantiate()
 	root.add_child(w)
 	w.set_physics_process(false)
+	await physics_frame
+	await physics_frame
+	var coast=w.village.shoreline
+	var grid=w.village.world_grid
+	check(grid.terrain_at(Vector2i(-8,10))=="grass","Inland terrain classification")
+	check(grid.reason(Rect2i(Vector2i(coast.lake),Vector2i.ONE))!="","Lake blocks building")
+	# Sweep the player capsule across an unoccupied stretch of the southern beach.
+	w.player.position=Vector3(-9,0.51,27)
+	var hit:=false
+	for i in 40:
+		if w.player.move_and_collide(Vector3(0,0,0.3)):
+			hit=true
+			break
+	var bank_position:=Vector2(w.player.position.x,w.player.position.z)
+	check(hit and absf(coast.coast(bank_position))<0.75,"Capsule stops at visible shoreline")
+	check(grid.reason(Rect2i(Vector2i(bank_position.round()),Vector2i.ONE))!="","Wet shore blocks construction")
 	var out:=OS.get_environment("EVERGROVE_PREVIEWS")
 	if not out.is_empty(): DirAccess.make_dir_recursive_absolute(out)
 	for level in 4:
 		w.apply_graphics(level)
-		var target:=Vector3(17,0.52,-8) if level%2 else Vector3(-7,0.52,17)
+		var target:=Vector3(18,0.52,-10) if level%2 else Vector3(-9,0.52,31)
 		w.player.position=target
 		w.camera.position=target+Vector3(0,10,10)
 		w.update_solar_lighting([0.23,0.14,0.08,0.43][level])
