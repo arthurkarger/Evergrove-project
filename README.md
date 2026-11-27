@@ -1,6 +1,9 @@
-# Evergrove — 0.5.0 · Home Sweet Home
+# Evergrove — 0.5.1 · Welcome to Evergrove
 
-Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Protótipo 3D com sprite pixelado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
+Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Simulador 3D estilizado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
+
+## Menu principal
+O jogo abre em uma vista cinematográfica da vila. Jogar inicia ou continua automaticamente o progresso salvo. Opções oferece quatro níveis gráficos, volume geral, volume da música do menu e informações de controles. As opções ficam salvas no dispositivo. O relógio da vila e o save não são alterados enquanto estiver no menu. Durante o jogo, o menu de pausa oferece retorno ao menu principal.
 
 ## Como jogar
 Use WASD/setas ou o joystick. Selecione um dos seis espaços rápidos por toque ou com 1–6. Aproxime-se de um recurso e toque na ação indicada ou pressione E. Abra a mochila com I ou pelo botão. Escolha o item e depois o destino para reorganizar os 24 espaços.

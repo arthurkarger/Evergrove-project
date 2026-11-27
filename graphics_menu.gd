@@ -96,6 +96,7 @@ func build(game) -> void:
 	pause_page.add_child(title)
 	button(pause_page,"Voltar ao jogo",close)
 	button(pause_page,"Configurações",show_settings)
+	button(pause_page,"Menu principal",return_to_title)
 	pages.add_child(settings_page)
 	settings_page.add_theme_constant_override("separation",8)
 	var head := Label.new()
@@ -145,6 +146,10 @@ func close() -> void:
 	world.pad.show()
 	world.pad.queue_redraw()
 	menu_button.show()
+
+func return_to_title() -> void:
+	world.save_game()
+	get_tree().change_scene_to_file("res://title.tscn")
 
 func show_pause() -> void:
 	pause_page.show()

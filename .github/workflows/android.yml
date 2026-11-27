@@ -86,6 +86,15 @@ jobs:
           godot --headless --path . --script res://tests/home.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-home.log"
           grep -Fx 'Home integration failures: 0' "$RUNNER_TEMP/evergrove-home.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-home.log"; then exit 1; fi
+      - name: Verify title menu, options and game transition
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-title-profile
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script res://tests/title.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-title.log"
+          grep -Fx 'Title menu integration failures: 0' "$RUNNER_TEMP/evergrove-title.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-title.log"; then exit 1; fi
       - name: Verify pause menu and graphics presets
         shell: bash
         env:
