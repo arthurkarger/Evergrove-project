@@ -12,6 +12,10 @@ var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
 var walk_time := 0.0
 var ground_offset := 0.0
+var eyes: Array[MeshInstance3D] = []
+var eye_scales: Array[Vector3] = []
+var idle_time := 0.0
+var movement_weight := 0.0
 
 static func finish_material(tint: Color, cloth: bool, hair := false) -> StandardMaterial3D:
 	var key := tint.to_html() + str(cloth) + str(hair)
@@ -84,6 +88,8 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	body = Node3D.new()
 	legs.clear()
 	arms.clear()
+	eyes.clear()
+	eye_scales.clear()
 	ground_offset = offset
 	body.position.y = offset
 	add_child(body)
@@ -114,8 +120,13 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	shape(body,"Back hair",Vector3(0,1.37,-0.23),Vector3(0.73,0.63,0.42),hair)
 	for side in [-1,1]:
 		shape(body,"Ear",Vector3(side*0.365,1.37,0),Vector3(0.16,0.22,0.17),skin)
-		shape(body,"Eye",Vector3(side*0.135,1.43,0.306),Vector3(0.070,0.115,0.043),Color("3a3030"))
-		shape(body,"Eye highlight",Vector3(side*0.135-0.012,1.456,0.329),Vector3(0.024,0.026,0.012),Color("fff5e4"))
+		var eye := shape(body,"Eye",Vector3(side*0.135,1.43,0.306),Vector3(0.082,0.125,0.043),Color("3a3030"))
+		var glint := shape(body,"Eye highlight",Vector3(side*0.135-0.014,1.456,0.329),Vector3(0.026,0.028,0.012),Color("fff5e4"))
+		for part in [eye,glint]:
+			eyes.append(part)
+			eye_scales.append(part.scale)
+		var brow := shape(body,"Brow",Vector3(side*0.135,1.535,0.300),Vector3(0.092,0.024,0.018),hair.darkened(0.10))
+		brow.rotation.z=side*0.10
 		shape(body,"Cheek",Vector3(side*0.218,1.32,0.283),Vector3(0.117,0.052,0.024),skin.lerp(Color("db8d83"),0.50))
 	shape(body,"Nose",Vector3(0,1.35,0.335),Vector3(0.105,0.086,0.105),skin.lightened(0.10))
 	shape(body,"Smile",Vector3(0,1.26,0.311),Vector3(0.090,0.025,0.019),Color("995e52"))
@@ -141,12 +152,21 @@ func pose(direction: Vector2, delta: float) -> void:
 	if moving:
 		rotation.y = lerp_angle(rotation.y,atan2(direction.x,direction.y),minf(delta*13.0,1.0))
 		walk_time += delta*10.5
-	var swing := sin(walk_time)*0.55 if moving else 0.0
+	idle_time += delta
+	movement_weight=move_toward(movement_weight,1.0 if moving else 0.0,delta*5.5)
+	var swing := sin(walk_time)*0.55*movement_weight
+	var blink_phase := fposmod(idle_time+float(get_instance_id()%17)*0.23,4.8)
+	var blink := 1.0-0.92*maxf(0.0,1.0-absf(blink_phase-4.55)/0.105)
+	for i in eyes.size():
+		eyes[i].scale=Vector3(eye_scales[i].x,eye_scales[i].y*blink,eye_scales[i].z)
+		if i%2==1: eyes[i].visible=blink>0.35
 	for i in legs.size():
 		var side := 1.0 if i==0 else -1.0
 		legs[i].rotation.x = lerpf(legs[i].rotation.x,swing*side,minf(delta*16.0,1.0))
 		arms[i].rotation.x = lerpf(arms[i].rotation.x,-swing*side*0.72,minf(delta*16.0,1.0))
-	body.position.y = ground_offset + (absf(sin(walk_time))*0.035 if moving else 0.0)
+	body.position.y = ground_offset + absf(sin(walk_time))*0.042*movement_weight
+	body.rotation.z=sin(walk_time)*0.035*movement_weight
+	body.scale.y=1.0+sin(idle_time*2.4)*0.006*(1.0-movement_weight)
 
 static func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)

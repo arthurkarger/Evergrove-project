@@ -115,6 +115,7 @@ func rounded(parent: Node3D,p: Vector3,s: Vector3,tint: String,cylinder := false
 	if cylinder:
 		var shape := CylinderMesh.new()
 		shape.radial_segments=24
+		shape.height=1.0
 		m.mesh=shape
 	else:
 		var shape := SphereMesh.new()
@@ -129,6 +130,16 @@ func rounded(parent: Node3D,p: Vector3,s: Vector3,tint: String,cylinder := false
 	m.scale=s
 	parent.add_child(m)
 
+func prop_collision(node: Node3D,p: Vector3,size: Vector3) -> void:
+	var body := StaticBody3D.new()
+	body.position=p
+	var collider := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size=size
+	collider.shape=shape
+	body.add_child(collider)
+	node.add_child(body)
+
 func garden_model(node: Node3D,id: String,preview: bool) -> void:
 	var t=world.town
 	match id:
@@ -142,7 +153,7 @@ func garden_model(node: Node3D,id: String,preview: bool) -> void:
 		"shrub":
 			for p in [Vector3(-0.19,0.34,0),Vector3(0.19,0.35,0),Vector3(0,0.51,0)]:
 				rounded(node,p,Vector3(0.63,0.68,0.62),"67964c" if p.y<0.5 else "91b95c")
-			if not preview: t.furnish(node,Vector3(0,0.24,0),Vector3(0.62,0.48,0.62),"67964c",true)
+			if not preview: prop_collision(node,Vector3(0,0.24,0),Vector3(0.62,0.48,0.62))
 		"lamp":
 			rounded(node,Vector3.UP*0.1,Vector3(0.38,0.2,0.38),"454d44",true)
 			t.furnish(node,Vector3.UP*0.85,Vector3(0.13,1.65,0.13),"454d44",not preview)
@@ -157,7 +168,7 @@ func garden_model(node: Node3D,id: String,preview: bool) -> void:
 			for i in 8:
 				var a := i*TAU/8
 				rounded(node,Vector3(cos(a)*0.8,0.62,sin(a)*0.8),Vector3(0.08,0.35,0.08),"bde9ec")
-			if not preview: t.furnish(node,Vector3.UP*0.22,Vector3(2.5,0.44,2.5),"bcb39d",true)
+			if not preview: prop_collision(node,Vector3.UP*0.22,Vector3(2.5,0.44,2.5))
 
 func locate(node: Node3D,room: int,tile: Vector2i,id: String,r: int) -> void:
 	var center := Grid.cell_center(tile,state.size_of(id,r))
