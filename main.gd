@@ -5,41 +5,8 @@ var sprite: Sprite3D
 var touch := Vector2.ZERO
 var elapsed := 0.0
 var textures: Array[ImageTexture] = []
-var rng := RandomNumberGenerator.new()
-func block(pos: Vector3, size: Vector3, color: Color, solid := false):
-	var root: Node3D
-	if solid:
-		root = StaticBody3D.new()
-		var c := CollisionShape3D.new()
-		var shape := BoxShape3D.new()
-		shape.size = size
-		c.shape = shape
-		root.add_child(c)
-	else:
-		root = Node3D.new()
-	add_child(root)
-	root.position = pos
-	var mesh := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = size
-	mesh.mesh = box
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = color
-	mesh.material_override = mat
-	root.add_child(mesh)
-	return root
-func tree(x: float,z: float):
-	block(Vector3(x,0.8,z),Vector3(0.5,1.6,0.5),Color("79523b"),true)
-	for i in range(3):
-		var s := 2.1-i*0.48
-		block(Vector3(x,1.6+i*0.55,z),Vector3(s,0.75,s),Color(["426b43","54854a","72a358"][i]))
-func house(x: float,z: float):
-	block(Vector3(x,1.2,z),Vector3(4,2.4,3.4),Color("e6c69a"),true)
-	for i in range(6):
-		block(Vector3(x,2.45+i*0.20,z),Vector3(4.5-i*0.68,0.25,3.9),Color("a65343"))
-	block(Vector3(x,0.65,z+1.72),Vector3(0.75,1.3,0.08),Color("674b3b"))
-	for dx in [-1.25,1.25]:
-		block(Vector3(x+dx,1.4,z+1.73),Vector3(0.65,0.65,0.08),Color("739ca4"))
+const Village = preload("res://village.gd")
+
 func make_sprite(step: int) -> ImageTexture:
 	var img := Image.create(16,24,false,Image.FORMAT_RGBA8)
 	img.fill(Color.TRANSPARENT)
@@ -57,7 +24,6 @@ func make_sprite(step: int) -> ImageTexture:
 	img.fill_rect(Rect2i(9,21+step,4,2),Color("49392e"))
 	return ImageTexture.create_from_image(img)
 func _ready():
-	rng.seed = 1234
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR
@@ -71,28 +37,11 @@ func _ready():
 	sun.rotation_degrees = Vector3(-55,-35,0)
 	sun.shadow_enabled = true
 	add_child(sun)
-	block(Vector3(0,-0.3,0),Vector3(42,0.6,42),Color("83aa65"),true)
-	for x in range(-20,21,2):
-		for z in range(-20,21,2):
-			if abs(x)<=2 or abs(z)<=2:
-				block(Vector3(x,0.012,z),Vector3(2,0.024,2),Color("d8bd8b"))
-			elif rng.randf()<0.22:
-				block(Vector3(x,0.008,z),Vector3(1.8,0.016,1.8),Color("8bb16b"))
-	for p in [Vector2(-7,-7),Vector2(7,-7),Vector2(-8,7)]:
-		house(p.x,p.y)
-	for i in range(-18,19,3):
-		tree(i,-19)
-		tree(i,19)
-		tree(-19,i)
-		tree(19,i)
-	for p in [Vector2(-5,-13),Vector2(5,10),Vector2(12,5),Vector2(-13,-3),Vector2(13,-12)]:
-		tree(p.x,p.y)
-	block(Vector3(10,0.5,10),Vector3(6,1,5),Color("609da9"),true)
-	for i in range(5):
-		block(Vector3(-12+i*0.9,0.35,12),Vector3(0.65,0.7,0.8),Color("92958a"),true)
+	var village := Village.new()
+	add_child(village)
 	player = CharacterBody3D.new()
 	add_child(player)
-	player.position = Vector3(0,0.5,4)
+	player.position = Vector3(0,0.5,6)
 	var c := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
 	shape.radius = 0.28
@@ -109,7 +58,7 @@ func _ready():
 	player.add_child(sprite)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 13
+	camera.size = 15
 	add_child(camera)
 	camera.position = player.position + Vector3(0,10,10)
 	camera.look_at(player.position)
@@ -117,7 +66,7 @@ func _ready():
 	var ui := CanvasLayer.new()
 	add_child(ui)
 	var label := Label.new()
-	label.text = "EVERGROVE   •   0.1.0"
+	label.text = "Evergrove   ·   %s" % ProjectSettings.get_setting("application/config/version")
 	label.position = Vector2(18,14)
 	ui.add_child(label)
 	var pad := Control.new()
@@ -133,8 +82,8 @@ func _physics_process(delta):
 	d = (d+touch).limit_length()
 	player.velocity = Vector3(d.x*4.0,-2,d.y*4.0)
 	player.move_and_slide()
-	player.position.x = clampf(player.position.x,-18,18)
-	player.position.z = clampf(player.position.z,-18,18)
+	player.position.x = clampf(player.position.x,-Village.LIMIT_X,Village.LIMIT_X)
+	player.position.z = clampf(player.position.z,-Village.LIMIT_Z,Village.LIMIT_Z)
 	elapsed += delta
 	sprite.texture = textures[int(elapsed*9)%2] if d.length()>0.1 else textures[0]
 	if abs(d.x)>0.1: sprite.flip_h = d.x<0

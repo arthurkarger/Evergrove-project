@@ -1,4 +1,4 @@
-# Evergrove — 0.1.0
+# Evergrove — 0.2.0 · A New Home
 
 Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Protótipo 3D com sprite pixelado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
 

@@ -41,6 +41,11 @@ jobs:
       - name: Import project
         shell: bash
         run: godot --headless --editor --path . --import
+      - name: Check village startup
+        shell: bash
+        run: |
+          godot --headless --path . --quit-after 10 2>&1 | tee "$RUNNER_TEMP/evergrove-startup.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-startup.log"; then exit 1; fi
       - name: Export APK
         shell: bash
         run: |
