@@ -138,8 +138,9 @@ def preview(name, target, distance):
     scene=bpy.context.scene
     scene.render.engine="CYCLES"
     scene.cycles.device="CPU"
-    scene.cycles.samples=16
-    scene.cycles.use_denoising=True
+    scene.cycles.samples=64
+    # Ubuntu Blender packages may be compiled without OpenImageDenoise.
+    scene.cycles.use_denoising=False
     scene.render.resolution_x=640
     scene.render.resolution_y=480
     scene.render.resolution_percentage=100
