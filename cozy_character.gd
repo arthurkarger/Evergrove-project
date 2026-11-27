@@ -2,7 +2,7 @@ extends Node3D
 # Original stylized, textured characters. The mesh is shared across all villagers.
 static var ball: SphereMesh
 static var textures: Dictionary = {}
-var body := Node3D.new()
+var body: Node3D
 var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
 var walk_time := 0.0
@@ -48,7 +48,7 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 	return part
 
 func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: int, offset: float) -> void:
-	if body.get_parent() == self:
+	if is_instance_valid(body) and body.get_parent() == self:
 		remove_child(body)
 		body.queue_free()
 	body = Node3D.new()
