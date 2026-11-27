@@ -125,7 +125,7 @@ func _ready():
 	site.setup(self)
 	add_child(home_ui)
 	home_ui.setup(self)
-	hud.home_requested.connect(home_ui.open)
+	hud.home_requested.connect(open_construction)
 	add_child(village_menu)
 	village_menu.build(self)
 	village_menu.closed.connect(close_social)
@@ -193,6 +193,7 @@ func move_item(a: int,b: int) -> void:
 	save_game()
 
 func toggle_bag(open: bool) -> void:
+	hud.run_button.set_pressed_no_signal(false)
 	touch = Vector2.ZERO
 	pad.finger = -1
 	pad.offset = Vector2.ZERO
@@ -202,6 +203,13 @@ func toggle_bag(open: bool) -> void:
 	if not open:
 		save_game()
 		update_world_ui()
+
+func open_construction() -> void:
+	if life.room not in [-1,6] or graphics.shade.visible or home_ui.menu.visible or site.active or hud.shade.visible or village_menu.shade.visible: return
+	home_ui.open_construction()
+
+func movement_speed() -> float:
+	return 6.6 if hud.run_button.button_pressed or Input.is_physical_key_pressed(KEY_SHIFT) else 4.0
 
 func game_hour() -> int:
 	return posmod(6+floori(life.clock/life.DAY_SECONDS*24),24)
@@ -260,6 +268,7 @@ func use_item() -> void:
 		interact_focus()
 		return
 	if life.room>=0: return
+	hud.build_button.visible=life.room in [-1,6] and not hud.shade.visible
 	life.find_target(player.position)
 	if life.target < 0: return
 	var message := life.interact()
@@ -291,7 +300,7 @@ func _input(event: InputEvent) -> void:
 		return
 	match event.keycode:
 		KEY_B:
-			if not hud.shade.visible: home_ui.open()
+			open_construction()
 		KEY_I, KEY_TAB: hud.toggle()
 		KEY_ESCAPE:
 			if hud.shade.visible: hud.toggle()
@@ -560,7 +569,8 @@ func _physics_process(delta):
 	if Input.is_physical_key_pressed(KEY_W): d.y -= 1
 	if Input.is_physical_key_pressed(KEY_S): d.y += 1
 	d = (d+touch).limit_length()
-	player.velocity = Vector3(d.x*4.0,-2,d.y*4.0)
+	var speed := movement_speed()
+	player.velocity = Vector3(d.x*speed,-2,d.y*speed)
 	player.move_and_slide()
 	if life.room<0:
 		player.position.x = clampf(player.position.x,village.world_grid.bounds.position.x,village.world_grid.bounds.end.x-1)
@@ -570,5 +580,5 @@ func _physics_process(delta):
 		player.position.x = clampf(player.position.x,center.x-3.6,center.x+(7.6 if life.room==6 and life.house.expanded else 3.6))
 		player.position.z = clampf(player.position.z,-2.7,2.7)
 	elapsed += delta
-	character.pose(d,delta)
+	character.pose(d,delta,speed>4.0)
 	if site.blend==0: camera.position = camera.position.lerp(player.position+Vector3(0,10,10),1-exp(-delta*8))

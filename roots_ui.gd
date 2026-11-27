@@ -34,6 +34,8 @@ var source := -1
 var notice_time := 0.0
 var hint := Label.new()
 var held_label := Label.new()
+var build_button := Button.new()
+var run_button := Button.new()
 
 func panel_style(fill: String,border: String) -> StyleBoxFlat:
 	return Style.box(Color(fill),Color(border),16,10)
@@ -92,12 +94,16 @@ func build(model) -> void:
 	decorate(pack)
 	top.add_child(pack)
 	pack.pressed.connect(toggle)
-	var house_button := Button.new()
-	house_button.text="Lar"
-	house_button.custom_minimum_size=Vector2(60,42)
-	decorate(house_button)
-	top.add_child(house_button)
-	house_button.pressed.connect(home_requested.emit)
+	build_button.name="BuildButton"
+	build_button.icon=preload("res://assets/art/icons/build.svg")
+	build_button.tooltip_text="Construir · B"
+	build_button.expand_icon=true
+	build_button.add_theme_constant_override("icon_max_width",32)
+	build_button.custom_minimum_size=Vector2(48,42)
+	decorate(build_button)
+	build_button.focus_mode=Control.FOCUS_NONE
+	top.add_child(build_button)
+	build_button.pressed.connect(home_requested.emit)
 	var info := PanelContainer.new()
 	info.add_theme_stylebox_override("panel",Style.box(Color("fff2ded9"),Color.TRANSPARENT,14,7,0))
 	top.add_child(info)
@@ -121,6 +127,21 @@ func build(model) -> void:
 	action.offset_bottom = -20
 	action.add_theme_font_size_override("font_size",18)
 	action.pressed.connect(use_requested.emit)
+	add_child(run_button)
+	run_button.name="RunButton"
+	decorate(run_button)
+	run_button.icon=preload("res://assets/art/icons/run.svg")
+	run_button.tooltip_text="Correr · toque para alternar"
+	run_button.toggle_mode=true
+	run_button.focus_mode=Control.FOCUS_NONE
+	run_button.expand_icon=true
+	run_button.add_theme_constant_override("icon_max_width",33)
+	run_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	run_button.offset_left=-70
+	run_button.offset_right=-12
+	run_button.offset_top=-144
+	run_button.offset_bottom=-88
+	run_button.visible=DisplayServer.is_touchscreen_available()
 	add_child(note)
 	note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	note.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -206,6 +227,8 @@ func show_note(message: String) -> void:
 
 func _process(delta: float) -> void:
 	action.visible=not action.disabled
+	run_button.visible=DisplayServer.is_touchscreen_available() and not shade.visible
+	if not is_visible() or shade.visible: run_button.set_pressed_no_signal(false)
 	if notice_time > 0:
 		notice_time -= delta
 		if notice_time <= 0: note.text = ""

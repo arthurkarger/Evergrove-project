@@ -95,6 +95,7 @@ func build(game) -> void:
 	title.add_theme_font_size_override("font_size",30)
 	pause_page.add_child(title)
 	button(pause_page,"Voltar ao jogo",close)
+	button(pause_page,"Oficina e serviços da vila",open_services)
 	button(pause_page,"Configurações",show_settings)
 	button(pause_page,"Menu principal",return_to_title)
 	pages.add_child(settings_page)
@@ -127,6 +128,7 @@ func build(game) -> void:
 func open() -> void:
 	if shade.visible: return
 	if world.site.active or world.home_ui.menu.visible or world.hud.shade.visible or world.village_menu.shade.visible: return
+	world.hud.run_button.set_pressed_no_signal(false)
 	world.touch = Vector2.ZERO
 	world.pad.finger = -1
 	world.pad.offset = Vector2.ZERO
@@ -146,6 +148,10 @@ func close() -> void:
 	world.pad.show()
 	world.pad.queue_redraw()
 	menu_button.show()
+
+func open_services() -> void:
+	close()
+	world.home_ui.open()
 
 func return_to_title() -> void:
 	world.save_game()

@@ -159,14 +159,14 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 func _process(delta: float) -> void:
 	if autonomous_idle and is_visible_in_tree(): pose(Vector2.ZERO,delta)
 
-func pose(direction: Vector2, delta: float) -> void:
+func pose(direction: Vector2, delta: float, running := false) -> void:
 	var moving := direction.length_squared()>0.01
 	if moving:
 		rotation.y = lerp_angle(rotation.y,atan2(direction.x,direction.y),minf(delta*13.0,1.0))
-		walk_time += delta*10.5
+		walk_time += delta*(15.5 if running else 10.5)
 	idle_time += delta
 	movement_weight=move_toward(movement_weight,1.0 if moving else 0.0,delta*5.5)
-	var swing := sin(walk_time)*0.55*movement_weight
+	var swing := sin(walk_time)*(0.78 if running else 0.55)*movement_weight
 	var blink_phase := fposmod(idle_time+float(get_instance_id()%17)*0.23,4.8)
 	var blink := 1.0-0.92*maxf(0.0,1.0-absf(blink_phase-4.55)/0.105)
 	for i in eyes.size():
@@ -176,7 +176,7 @@ func pose(direction: Vector2, delta: float) -> void:
 		var side := 1.0 if i==0 else -1.0
 		legs[i].rotation.x = lerpf(legs[i].rotation.x,swing*side,minf(delta*16.0,1.0))
 		arms[i].rotation.x = lerpf(arms[i].rotation.x,-swing*side*0.72,minf(delta*16.0,1.0))
-	body.position.y = ground_offset + absf(sin(walk_time))*0.042*movement_weight
+	body.position.y = ground_offset + absf(sin(walk_time))*(0.065 if running else 0.042)*movement_weight
 	body.rotation.z=sin(walk_time)*0.043*movement_weight
 	body.rotation.y=sin(walk_time)*0.07*movement_weight + sin(idle_time*1.03)*0.025*(1.0-movement_weight)
 	if is_instance_valid(scarf_tail):

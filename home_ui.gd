@@ -93,6 +93,12 @@ func open(which: String="home") -> void:
 	scroll.scroll_vertical=0
 	draw()
 
+func open_construction() -> void:
+	world.toggle_bag(true)
+	world.hud.visible=false
+	page="catalog"
+	build("")
+
 func close() -> void:
 	if site.active: site.stop()
 	menu.hide()
@@ -127,7 +133,7 @@ func draw() -> void:
 			if room==6 and not house.expanded:
 				button(options,"Ampliar a casa · 70 folhas",expand_room)
 		"catalog","craft":
-			title.text="Objetos disponíveis" if page=="catalog" else "Oficina"
+			title.text=("Construção externa" if room==-1 else "Decoração da casa") if page=="catalog" else "Oficina"
 			if page=="catalog": button(options,"Selecionar móvel colocado",build.bind(""))
 			for id in house.NAMES:
 				if page=="catalog" and room!=-1 and id in ["flower","shrub","lamp","fountain","tree","shop","house"]: continue
@@ -143,7 +149,8 @@ func draw() -> void:
 					for k in house.RECIPES[id]:
 						if bag.quantity(k)<int(house.RECIPES[id][k]): enough=false
 					craft_button.disabled=not enough
-			link("Voltar","home")
+			if page=="catalog": button(options,"Voltar à planta",build.bind(""))
+			else: link("Voltar","home")
 		"settlement":
 			settlement_board()
 		"resident":
@@ -226,7 +233,7 @@ func build(id: String) -> void:
 	status()
 
 func status() -> void:
-	hint.text="Toque em um móvel para editar · arraste para mover a câmera" if site.kind=="" else str(world.life.house.NAMES[site.kind])+" · escolha um quadrado"
+	hint.text="Catálogo para construir · toque em um objeto para editar" if site.kind=="" else str(world.life.house.NAMES[site.kind])+" · escolha um quadrado"
 	if site.kind!="":
 		var footprint: Vector2i=world.life.house.size_of(site.kind,site.turns)
 		hint.text+=" · %d × %d" % [footprint.x,footprint.y]
