@@ -9,23 +9,46 @@ var arms: Array[Node3D] = []
 var walk_time := 0.0
 var ground_offset := 0.0
 
-static func finish_material(tint: Color, cloth: bool) -> StandardMaterial3D:
-	var key := tint.to_html() + str(cloth)
+static func finish_material(tint: Color, cloth: bool, hair := false) -> StandardMaterial3D:
+	var key := tint.to_html() + str(cloth) + str(hair)
 	if not textures.has(key):
-		var img := Image.create(64,64,false,Image.FORMAT_RGBA8)
-		for y in 64:
-			for x in 64:
+		var size := 128 if cloth or hair else 64
+		var img := Image.create(size,size,false,Image.FORMAT_RGBA8)
+		var normal := Image.create(size,size,false,Image.FORMAT_RGBA8)
+		for y in size:
+			for x in size:
+				var u := float(x)/float(size)
+				var v := float(y)/float(size)
 				var grain := sin(float(x)*2.17+float(y)*1.39)*cos(float(y)*2.41-float(x)*0.87)
-				var weave := 0.0
+				var amount := grain*0.008
+				var nx := 0.0
+				var ny := 0.0
 				if cloth:
-					weave = (0.022 if x%4==0 else -0.008)+(0.018 if y%4==0 else -0.008)
-				var amount := grain*0.012 + weave
+					var wx := sin(u*TAU*24.0)
+					var wy := sin(v*TAU*24.0)
+					var weave := wx*wy*0.020
+					var seam := 1.0-smoothstep(0.009,0.026,absf(u-0.5))
+					var stitches := smoothstep(0.2,0.65,sin(v*TAU*18.0))
+					amount += weave + 0.035*sin(v*TAU)*sin(u*TAU*2.0) - seam*0.035 + seam*stitches*0.045
+					nx = cos(u*TAU*24.0)*wy*0.13
+					ny = cos(v*TAU*24.0)*wx*0.13
+				elif hair:
+					var strands := u*TAU*16.0 + sin(v*TAU)*0.65
+					amount += sin(strands)*0.035 + sin(strands*2.0)*0.012
+					nx = cos(strands)*0.18
 				img.set_pixel(x,y,tint.lightened(amount) if amount>=0.0 else tint.darkened(-amount))
+				var n := Vector3(nx,ny,1.0).normalized()
+				normal.set_pixel(x,y,Color(n.x*0.5+0.5,n.y*0.5+0.5,n.z*0.5+0.5))
 		img.generate_mipmaps()
+		normal.generate_mipmaps()
 		var mat := StandardMaterial3D.new()
 		mat.albedo_texture = ImageTexture.create_from_image(img)
-		mat.roughness = 0.92
-		mat.metallic_specular = 0.05
+		mat.roughness = 0.88 if cloth else (0.62 if hair else 0.93)
+		mat.metallic_specular = 0.10 if hair else 0.05
+		if cloth or hair:
+			mat.normal_texture = ImageTexture.create_from_image(normal)
+			mat.normal_scale = 0.35
+			mat.normal_enabled = quality_level>=2
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 		textures[key] = mat
 	return textures[key]
@@ -40,7 +63,8 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 	var part := MeshInstance3D.new()
 	part.name = label
 	part.mesh = ball
-	part.material_override = finish_material(tint,cloth)
+	var is_hair := label in ["Hair cap","Back hair","Side lock","Fringe","Bun"]
+	part.material_override = finish_material(tint,cloth,is_hair)
 	part.position = pos
 	part.scale = size
 	if not shadow:
@@ -124,4 +148,5 @@ static func set_quality(level: int) -> void:
 		ball.rings = [4,6,8,12][quality_level]
 	for key in textures:
 		var mat: StandardMaterial3D = textures[key]
+		mat.normal_enabled = mat.normal_texture != null and quality_level>=2
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
