@@ -3,6 +3,9 @@ extends Node3D
 static var ball: SphereMesh
 static var textures: Dictionary = {}
 static var quality_level := 2
+static var foot_mesh: PlaneMesh
+static var foot_material: ShaderMaterial
+var foot_shadow: MeshInstance3D
 var body: Node3D
 var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
@@ -82,9 +85,11 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	ground_offset = offset
 	body.position.y = offset
 	add_child(body)
+	setup_foot_shadow(offset)
 	var pants := Color("566875") if outfit==1 else Color("626d58")
 	var shoes := Color("705346")
-	var cloth := shirt if outfit!=2 else shirt.lightened(0.12)
+	var vivid := Color.from_hsv(shirt.h,clampf(shirt.s*1.17,0.0,0.93),shirt.v,shirt.a)
+	var cloth := vivid if outfit!=2 else vivid.lightened(0.08)
 	shape(body,"Torso",Vector3(0,0.78,0),Vector3(0.57,0.62,0.38),cloth,true,true)
 	shape(body,"Collar",Vector3(0,1.04,0.11),Vector3(0.30,0.10,0.26),cloth.lightened(0.25),true)
 	for side in [-1,1]:
@@ -143,6 +148,7 @@ func pose(direction: Vector2, delta: float) -> void:
 
 static func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)
+	if foot_material != null: foot_material.set_shader_parameter("strength",0.0 if quality_level==0 else (0.20 if quality_level==1 else 0.33))
 	if ball != null:
 		ball.radial_segments = [8,12,16,24][quality_level]
 		ball.rings = [4,6,8,12][quality_level]
@@ -150,3 +156,29 @@ static func set_quality(level: int) -> void:
 		var mat: StandardMaterial3D = textures[key]
 		mat.normal_enabled = mat.normal_texture != null and quality_level>=2
 		mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+func setup_foot_shadow(offset: float) -> void:
+	if foot_mesh == null:
+		foot_mesh = PlaneMesh.new()
+		foot_mesh.size=Vector2(0.94,0.69)
+	if foot_material == null:
+		var shader := Shader.new()
+		shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float strength = 0.33;
+void fragment() {
+	float r=length((UV-0.5)*2.0);
+	ALBEDO=vec3(0.09,0.12,0.09);
+	ALPHA=(1.0-smoothstep(0.12,1.0,r))*strength;
+}
+"""
+		foot_material=ShaderMaterial.new()
+		foot_material.shader=shader
+	if not is_instance_valid(foot_shadow):
+		foot_shadow=MeshInstance3D.new()
+		foot_shadow.mesh=foot_mesh
+		foot_shadow.material_override=foot_material
+		foot_shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(foot_shadow)
+	foot_shadow.position.y=offset+0.075
