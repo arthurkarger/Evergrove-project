@@ -2,7 +2,7 @@ extends Node3D
 var player: CharacterBody3D
 var camera: Camera3D
 const CozyCharacter = preload("res://cozy_character.gd")
-var character: Node3D
+var character: CozyCharacter
 var touch := Vector2.ZERO
 var elapsed := 0.0
 const Village = preload("res://village.gd")
