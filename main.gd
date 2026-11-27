@@ -63,12 +63,15 @@ func _ready():
 	e.background_mode = Environment.BG_COLOR
 	e.background_color = Color("b8d6dc")
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("fff1db")
-	e.ambient_light_energy = 0.7
+	e.ambient_light_color = Color("e5dfd0")
+	e.ambient_light_energy = 0.48
+	e.glow_enabled = false
 	env.environment = e
 	add_child(env)
 	sun.rotation_degrees = Vector3(-55,-35,0)
 	sun.shadow_enabled = true
+	sun.light_energy = 0.65
+	sun.light_specular = 0.0
 	add_child(sun)
 	var village := Village.new()
 	add_child(village)
@@ -97,6 +100,7 @@ func _ready():
 	camera.position = player.position + Vector3(0,10,10)
 	camera.look_at(player.position)
 	camera.current = true
+	setup_world_shader()
 	var ui := CanvasLayer.new()
 	add_child(ui)
 	pad.world = self
@@ -291,10 +295,43 @@ func update_world_ui() -> void:
 	var minutes := floori(fmod(phase*24,1.0)*6)*10
 	hud.clock_label.text = "Dia %d  ·  %02d:%02d  ·  %d F  ·  v%s" % [life.day,hours,minutes,life.social.coins,ProjectSettings.get_setting("application/config/version")]
 	var light := smoothstep(-0.36,0.38,sin(phase*TAU))
-	sun.light_energy = lerpf(0.12,1.0,light)
-	sky.ambient_light_energy = lerpf(0.48,0.7,light)
-	sky.ambient_light_color = Color("a4b4d7").lerp(Color("fff1db"),light)
+	sun.light_energy = lerpf(0.10,0.65,light)
+	sky.ambient_light_energy = lerpf(0.40,0.48,light)
+	sky.ambient_light_color = Color("a4b4d7").lerp(Color("e5dfd0"),light)
 	sky.background_color = Color("465772").lerp(Color("b8d6dc"),light)
+
+# One screen sample, no blur, bloom, depth pass or HUD processing.
+func setup_world_shader() -> void:
+	var grade := CanvasLayer.new()
+	grade.name = "WorldColorGrade"
+	grade.layer = 0
+	add_child(grade)
+	var overlay := ColorRect.new()
+	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.focus_mode = Control.FOCUS_NONE
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+render_mode unshaded, blend_disabled;
+uniform sampler2D world_screen : hint_screen_texture, repeat_disable, filter_nearest;
+uniform float highlight_strength : hint_range(0.0, 0.6) = 0.28;
+uniform float saturation : hint_range(0.0, 1.2) = 0.94;
+void fragment() {
+	vec3 src = texture(world_screen, SCREEN_UV).rgb;
+	float lum = dot(src, vec3(0.2126, 0.7152, 0.0722));
+	vec3 c = mix(vec3(lum), src, saturation);
+	float shoulder = smoothstep(0.48, 1.0, max(c.r, max(c.g, c.b)));
+	c *= 1.0 - highlight_strength * shoulder;
+	// Gentle warm highlights and slightly cool shadows.
+	c *= mix(vec3(0.98, 1.0, 1.025), vec3(1.015, 1.0, 0.975), smoothstep(0.15, 0.75, lum));
+	COLOR = vec4(clamp(c, vec3(0.0), vec3(1.0)), 1.0);
+}
+"""
+	var grade_material := ShaderMaterial.new()
+	grade_material.shader = shader
+	overlay.material = grade_material
+	grade.add_child(overlay)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 func save_game() -> void:
 	if initialized:
