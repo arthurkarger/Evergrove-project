@@ -1,0 +1,30 @@
+name: Android APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: barichello/godot-ci:4.4.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure templates and Android SDK
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.local/share/godot/export_templates" "$HOME/.config/godot" build
+          if [ "$HOME" != /root ]; then
+            cp -r /root/.local/share/godot/export_templates/4.4.1.stable "$HOME/.local/share/godot/export_templates/"
+          fi
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "${ANDROID_HOME:-/opt/android-sdk}" "${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}" > "$HOME/.config/godot/editor_settings-4.4.tres"
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          printf 'export/android/debug_keystore = "%s/.android/debug.keystore"\n' "$HOME" >> "$HOME/.config/godot/editor_settings-4.4.tres"
+      - name: Import project
+        run: godot --headless --editor --path . --import
+      - name: Export
+        run: godot --headless --path . --export-debug Android build/evergrove.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Android
+          path: build/evergrove.apk
+          if-no-files-found: error
