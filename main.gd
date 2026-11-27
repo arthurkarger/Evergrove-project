@@ -392,28 +392,28 @@ func update_solar_lighting(phase: float) -> void:
 	var twilight := (1.0-smoothstep(0.02,0.58,absf(elevation)))*smoothstep(-0.25,0.015,elevation)
 	var dusk := phase>0.25 and phase<0.70
 	var horizon := Color("f6bca1") if not dusk else Color("ef977a")
-	var direct := Color("fff7e8").lerp(Color("ffb064"),twilight*0.85)
-	var strength := lerpf(0.0,1.02,smoothstep(-0.06,0.48,elevation))
+	var direct := Color("fff3d4").lerp(Color("ffab45"),twilight*0.92)
+	var strength := lerpf(0.0,1.85,smoothstep(-0.045,0.44,elevation))
 	sun.rotation_degrees = Vector3(-72.0*elevation,-105.0+phase*360.0,0)
 	sun.light_color = direct
 	sun.light_energy = strength
-	sun.light_specular = 0.45 if quality_level>=2 else 0.10
-	sky.ambient_light_energy = lerpf(0.36,0.58,daylight)
-	sky.ambient_light_color = Color("899ed8").lerp(Color("f2f4e8"),daylight).lerp(Color("f5c39d"),twilight*0.30)
+	sun.light_specular = 0.52 if quality_level>=2 else 0.10
+	sky.ambient_light_energy = lerpf(0.30,0.39,daylight)
+	sky.ambient_light_color = Color("7189c7").lerp(Color("c1def5"),daylight).lerp(Color("dcb7a4"),twilight*0.16)
 	sky.background_color = Color("23354f").lerp(Color("a6cbdc"),daylight).lerp(horizon,twilight)
 	sky_fill.visible = quality_level>=2
 	sky_fill.rotation_degrees = Vector3(-48,sun.rotation_degrees.y+155,0)
 	sky_fill.light_color = Color("93b1eb").lerp(Color("bcd9ed"),daylight)
-	sky_fill.light_energy = lerpf(0.24,0.09,daylight)
+	sky_fill.light_energy = lerpf(0.16,0.13,daylight)
 	sky.background_mode = Environment.BG_SKY if quality_level>=2 and life.room<0 else Environment.BG_COLOR
 	var period := floori(phase*48.0)
 	if period!=sky_period:
 		sky_period=period
-		sky_paint.sky_top_color = Color("172741").lerp(Color("6598cd"),daylight).lerp(Color("927caa"),twilight*0.75)
+		sky_paint.sky_top_color = Color("172741").lerp(Color("4599d6"),daylight).lerp(Color("927caa"),twilight*0.75)
 		sky_paint.sky_horizon_color = sky.background_color
 		sky_paint.ground_horizon_color = sky.background_color
 		sky_paint.ground_bottom_color = Color("41534d").lerp(Color("829484"),daylight)
-	sky.glow_enabled = quality_level==3 and life.room<0 and daylight<0.22 and DisplayServer.get_name()!="headless"
+	sky.glow_enabled = quality_level==3 and life.room<0 and RenderingServer.get_current_rendering_method()=="forward_plus" and DisplayServer.get_name()!="headless"
 	village.update_lamps(daylight)
 	village.update_water_light(sky.background_color,daylight,phase)
 	if grade_material != null:
@@ -460,7 +460,9 @@ void fragment() {
 	float chroma = max(src.r,max(src.g,src.b))-min(src.r,min(src.g,src.b));
 	float vibrance = (saturation-1.0)*(1.0-0.65*chroma)*mix(0.55,1.0,daylight);
 	vec3 c = mix(vec3(lum),src,1.0+vibrance);
-	c = mix(c,c*c*(3.0-2.0*c),0.11);
+	c = mix(c,c*c*(3.0-2.0*c),0.18);
+	c *= mix(vec3(0.94,0.99,1.07),vec3(1.055,1.025,0.96),smoothstep(0.15,0.84,lum)*daylight);
+	c += vec3(0.065,0.034,0.008)*dusk*smoothstep(0.48,0.95,lum);
 	float peak = max(c.r,max(c.g,c.b));
 	float shoulder = smoothstep(0.76,1.0,peak);
 	c *= 1.0-highlight_strength*shoulder;
@@ -506,15 +508,15 @@ func apply_graphics(level: int) -> void:
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
 	sky_dome.sky_material = physical_sky if quality_level==3 else sky_paint
 	sky.tonemap_mode = Environment.TONE_MAPPER_FILMIC if quality_level>=2 else Environment.TONE_MAPPER_LINEAR
-	sky.tonemap_white = 1.6
-	sky.tonemap_exposure = 1.02
+	sky.tonemap_white = 2.0
+	sky.tonemap_exposure = 1.04
 	village.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
 	if grade_overlay != null:
 		grade_overlay.visible = quality_level>0
 		grade_material.set_shader_parameter("quality",quality_level)
 		grade_material.set_shader_parameter("highlight_strength",0.08)
-		grade_material.set_shader_parameter("saturation",[1.0,1.17,1.27,1.32][quality_level])
+		grade_material.set_shader_parameter("saturation",[1.0,1.12,1.20,1.25][quality_level])
 	update_solar_lighting(life.clock/life.DAY_SECONDS)
 
 func save_game() -> void:

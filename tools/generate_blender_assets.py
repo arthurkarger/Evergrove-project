@@ -38,7 +38,8 @@ def material(name, rgb, seed):
         relief += .5*np.sin(x*2+np.sin(y*3)) + .13*np.cos(x*11-y*5)
     elif name.startswith(("Leaf","Needles")):
         relief = .48*np.sin(x*5+np.sin(y*3))*np.cos(y*6)+.27*np.sin(2*x-y)
-    relief += rng.uniform(-.12,.12,(size,size))
+    relief += .15*np.sin(x*1.0+y*2.0)+.10*np.cos(x*3.0-y)
+    relief += rng.uniform(-.075,.075,(size,size))
     def texture(suffix, values, noncolor=False):
         img = bpy.data.images.new(name+suffix,width=size,height=size,alpha=False)
         if noncolor: img.colorspace_settings.name = "Non-Color"
@@ -49,7 +50,7 @@ def material(name, rgb, seed):
         tex = nodes.new("ShaderNodeTexImage")
         tex.image = img
         return tex.outputs["Color"]
-    links.new(texture("_paint",np.asarray(rgb)*(1+.16*relief[:,:,None])),bsdf.inputs["Base Color"])
+    links.new(texture("_paint",np.asarray(rgb)*(1+.23*relief[:,:,None])),bsdf.inputs["Base Color"])
     if name in ("Wood","Stone","Roof","Plaster","Support"):
         dx = (np.roll(relief,1,1)-np.roll(relief,-1,1))*.35
         dy = (np.roll(relief,1,0)-np.roll(relief,-1,0))*.35
@@ -72,8 +73,8 @@ def box(name, loc, size, mat, rotation=(0,0,0)):
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
     paint(obj, mat, name)
     bevel=obj.modifiers.new("Soft handcrafted edges", "BEVEL")
-    bevel.width=min(.035, min(size)*.16)
-    bevel.segments=2
+    bevel.width=min(.055, min(size)*.20)
+    bevel.segments=3
     bpy.ops.object.modifier_apply(modifier=bevel.name)
     return obj
 
@@ -121,6 +122,7 @@ def house(roof_color=(.48,.16,.12), wall_color=(.81,.66,.43)):
     for z in (.27,1.98):
         box("Front beam",(0,-1.17,z),(3.03,.12,.14),wood)
     box("Door",(0,-1.2,.87),(.76,.12,1.22),wood)
+    box("Door inset",(0,-1.27,.93),(.52,.03,.88),wood)
     box("Doorstep",(0,-1.38,.1),(.93,.46,.20),stone)
     for x in (-.99,.99):
         box("Window frame",(x,-1.2,1.35),(.65,.13,.72),wood)
@@ -143,8 +145,8 @@ def house(roof_color=(.48,.16,.12), wall_color=(.81,.66,.43)):
 
 def tree(fruit=False):
     bark=material("Wood",(.35,.19,.09), 6)
-    leaf1=material("Leaf",(.22,.42,.14), 7)
-    leaf2=material("LeafLight",(.39,.57,.19), 8)
+    leaf1=material("Leaf",srgb("67983b"), 7)
+    leaf2=material("LeafLight",srgb("a3c95a"), 8)
     cone("Trunk",(0,0,.85),.25,.14,1.7,bark,vertices=12)
     for loc,size,mat in [
         ((0,0,1.95),(.9,.78,.8),leaf1),
@@ -162,10 +164,10 @@ def tree(fruit=False):
     for side in (-1,1):
         fork=cone("Branch",(side*.23,0,1.21),.11,.07,.68,bark,10)
         fork.rotation_euler.y=side*.65
-    for j in range(9):
+    for j in range(13):
         a=j*2.4
         rock("Crown lobe",(.69*math.cos(a),.59*math.sin(a),1.92+.38*math.sin(a*2)),
-             (.33,.32,.35),leaf2 if j%3==0 else leaf1)
+             (.29+.045*(j%3),.30,.30+.05*(j%2)),leaf2 if j%3==0 else leaf1)
     if fruit:
         apple=material("Apple",(.72,.22,.08),14)
         for loc in [(-.72,-.57,1.7),(.58,-.52,1.8),(.82,.18,1.86)]:
@@ -175,9 +177,9 @@ def tree(fruit=False):
 def pine():
     bark=material("Wood",(.35,.19,.09),16)
     cone("Trunk",(0,0,1),.33,.20,2,bark,vertices=12)
-    for i, color in enumerate(["50785c","628567","769672"]):
+    for i, color in enumerate(["4a7443","679447","91b75d"]):
         leaf=material("Needles"+str(i),srgb(color),20+i)
-        obj=cone("Needles",(0,0,1.9+i*.76),1.45-i*.305,.075,2,leaf,vertices=24)
+        obj=cone("Needles",(0,0,1.9+i*.76),1.45-i*.305,.075,2,leaf,vertices=32)
         for vert in obj.data.vertices:
             a=math.atan2(vert.co.y,vert.co.x)
             if vert.co.z<0:
@@ -188,7 +190,7 @@ def pine():
 
 def character_part(kind):
     mat=material("Neutral",(.7,.7,.7),40)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=24,ring_count=14,radius=.5)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=32,ring_count=20,radius=.5)
     obj=bpy.context.object
     for vert in obj.data.vertices:
         x,y,z=vert.co
@@ -197,13 +199,13 @@ def character_part(kind):
             x *= 1+.23*math.exp(-((z+.13)/.18)**2)-.21*max(0,-z)*2
             y *= 1-.12*max(0,-z)*2
         elif kind=="torso":
-            x *= 1+.24*z
+            x *= 1+.30*z+.06*math.cos(z*math.pi*2)
             z=math.copysign(.5*(abs(z)*2)**.70,z)
         elif kind=="limb":
             z=math.copysign(.5*(abs(z)*2)**.72,z)
         elif kind=="shoe":
             z=max(-.31,z)
-            y *= 1-.25*z
+            y *= 1-.32*z+.08*math.cos(x*math.pi*2)
         elif kind=="hair":
             z=math.copysign(.5*(abs(z)*2)**.82,z)
             y *= 1+.12*math.cos(x*12+z*4)
@@ -224,8 +226,8 @@ def bench():
         box("Back support",(x,.23,.67),(.12,.12,.69),dark)
     for y in (-.22,-.07,.08,.23):
         box("Seat slat",(0,y,.51),(1.72,.135,.10),wood)
-    for z in (.79,1.01):
-        box("Back slat",(0,.25,z),(1.72,.10,.18),wood)
+    for z in (.76,.91,1.06):
+        box("Back slat",(0,.25,z),(1.72,.10,.135),wood)
     for x in (-.79,.79):
         box("Armrest",(x,0,.76),(.13,.56,.12),dark)
         box("Arm support",(x,-.19,.62),(.10,.10,.26),dark)
@@ -240,8 +242,8 @@ def wildflowers():
         h=.35+.09*j
         cone("Stem",(x,y,h/2),.018,.011,h,green,8)
         rock("Basal leaf",(x+.055,y,h*.43),(.115,.05,.045),green).rotation_euler.y=-.52
-        for k in range(6):
-            a=k*math.tau/6+j
+        for k in range(7):
+            a=k*math.tau/7+j
             petal=rock("Petal",(x+.086*math.cos(a),y+.086*math.sin(a),h),(.096,.047,.035),cream)
             petal.rotation_euler.z=a
         rock("Flower heart",(x,y,h+.026),(.057,.057,.038),amber)
@@ -253,7 +255,8 @@ def river_stones():
         obj=rock("River stone",(x,y,z),(w,w*.79,w*.7),stone)
         for v in obj.data.vertices:
             v.co.z=max(-.55,v.co.z)
-            v.co.x+=.1*math.sin(v.co.y*4)
+            v.co.x+=.14*math.sin(v.co.y*4)
+            v.co.y+=.06*math.cos(v.co.z*6)
         rock("Lichen",(x-.04,y+.02,z+w*.63),(w*.45,w*.38,.04),moss)
 
 def furniture(kind):
@@ -266,12 +269,16 @@ def furniture(kind):
             box("Binding",(x,0,.75),(.055,.77,.035),trim)
             box("Front binding",(x,-.37,.32),(.055,.025,.58),trim)
         box("Latch",(0,-.403,.55),(.14,.045,.14),trim)
+        for x in (-.34,.34):
+            box("Foot",(x,0,.035),(.15,.65,.09),trim)
     else:
         for x in (-.34,.34):
             for y in (-.30,.30):
                 cone("Turned leg",(x,y,.26),.075,.095,.52,trim,12)
         for j in range(4):
             box("Table plank",(0,(j-1.5)*.2,.54),(.94,.194,.13),wood)
+        for x in (-.34,.34):
+            box("Apron",(x,0,.41),(.09,.68,.12),trim)
 
 def export(name):
     meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]

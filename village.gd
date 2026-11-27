@@ -166,8 +166,12 @@ void fragment() {
 	vec2 p = world_pos.xz;
 	vec2 banks = (texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
 	float distance_to_land = -min(banks.x,banks.y);
-	if (distance_to_land<0.) discard;
-	float depth = smoothstep(0.,5.0,distance_to_land);
+	float ocean = step(banks.x,banks.y);
+	// Signed shoreline: animate the waterline on both sides of the dry coast.
+	float surge = 0.14 + 0.43 * (0.5+0.5*sin(TIME*1.65 + sin(p.x*0.19+p.y*0.13)*0.85));
+	float runup = mix(0.035, surge, ocean);
+	if (distance_to_land < -runup) discard;
+	float depth = smoothstep(0.,5.0,max(0.0,distance_to_land));
 	float shore = 1.0-depth;
 	float t = TIME;
 	vec2 flow = normalize(vec2(0.83,0.56));
@@ -177,7 +181,7 @@ void fragment() {
 	float wave_a = sin(a+0.65*sin(b*0.56));
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
-	vec3 sand = vec3(0.24,0.66,0.52);
+	vec3 sand = vec3(0.24,0.70,0.58);
 	vec3 deep = mix(vec3(0.045,0.33,0.36),vec3(0.025,0.26,0.42),step(banks.x,banks.y));
 	vec3 water = mix(sand,deep,depth);
 	float wash = distance_to_land - (0.17+0.09*sin(t*1.3+dot(p,vec2(.7,.43))));
@@ -185,7 +189,7 @@ void fragment() {
 	float nx = 0.0;
 	float nz = 0.0;
 	if (quality>0) {
-		crest = smoothstep(0.70,0.99,wave_a*0.65+wave_b*0.35)*0.075;
+		crest += smoothstep(0.70,0.99,wave_a*0.65+wave_b*0.35)*0.075;
 		nx = cos(a)*0.09;
 		nz = cos(b)*0.075;
 	}
@@ -204,13 +208,20 @@ void fragment() {
 	NORMAL = normalize(mat3(VIEW_MATRIX)*n_world);
 	float fresnel = pow(1.0-clamp(dot(NORMAL,VIEW),0.0,1.0),3.0);
 	water = mix(water,sky_tint.rgb, (0.09+fresnel*0.32)*(quality>=2?1.0:0.35));
-	ALBEDO = water + vec3(crest*0.78,crest,crest*0.94);
+		// A breaking crest follows the moving contour; a thin wash remains behind it.
+	float front = distance_to_land + runup;
+	float lace = 0.72 + 0.28*sin(p.x*13.0+p.y*9.0+wave_b*2.0);
+	float breaker = (1.0-smoothstep(0.025,0.18,front))*ocean*lace;
+	float backwash = (1.0-smoothstep(0.04,0.20,abs(front-0.52)))*ocean*0.22;
+	float film = ocean*(1.0-smoothstep(-0.15,0.65,distance_to_land));
+	water = mix(water,vec3(0.54,0.54,0.32),film*0.50);
+	ALBEDO = mix(water + vec3(crest*0.78,crest,crest*0.94),vec3(0.93,0.98,0.93),clamp(breaker*0.84+backwash,0.0,1.0));
 	ROUGHNESS = quality==3 ? 0.22+0.12*(1.0-wave_a)*0.5 : (quality==2?0.37:0.83);
 	METALLIC = 0.0;
 #ifdef CLEAR_WATER
 	vec2 bend = (mat3(VIEW_MATRIX)*vec3(nx,0.,nz)).xy * (.006+.014*depth);
 	vec3 riverbed = texture(scenery,clamp(SCREEN_UV+bend,vec2(.001),vec2(.999))).rgb;
-	float opacity = mix(.42,.88,depth) + fresnel*.07;
+	float opacity = clamp(mix(.42,.88,depth) + fresnel*.07 + breaker*.48,0.0,1.0);
 	ALBEDO *= opacity;
 	EMISSION = riverbed*(1.-opacity);
 #endif
@@ -244,15 +255,18 @@ void fragment() {
 	if (quality > 0) { shade += 0.021 * fleck; }
 	if (quality > 1) { shade += 0.011 * detail + 0.009 * mottling; }
 	if (quality == 3) { shade += 0.012 * sin(p.x * 7.0 + p.y * 5.0) * cos(p.y * 8.0); }
-	vec3 grass_base = vec3(0.27, 0.52, 0.16);
+	vec3 grass_base = vec3(0.30, 0.59, 0.13);
 	if (has_art_grass && quality > 0) {
-		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.65);
+		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.38);
 	}
 	ALBEDO = grass_base * mix(vec3(1.),COLOR.rgb / vec3(.58,.71,.47),0.28) + vec3(shade, shade, shade * 0.55);
 	vec2 bank=(texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
 	float wet=min(bank.x,bank.y);
 	float edge=min(bank.x-2.75,bank.y-0.85)+patch*0.22;
-	vec3 beach=mix(vec3(.51,.39,.225),vec3(.86,.72,.45),smoothstep(-.45,1.20,wet));
+	vec3 beach=mix(vec3(.48,.34,.19),vec3(.91,.77,.50),smoothstep(-.45,1.20,wet));
+	float tide=0.14+0.43*(0.5+0.5*sin(TIME*1.65+sin(p.x*0.19+p.y*0.13)*0.85));
+	float damp=(1.0-smoothstep(tide+0.10,tide+0.65,bank.x))*step(bank.x,bank.y);
+	beach*=mix(1.0,0.73,damp);
 	ALBEDO=mix(beach*(1.+0.044*detail+0.023*patch),ALBEDO,smoothstep(-.55,.55,edge));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
@@ -629,7 +643,8 @@ void vertex() {
 	}
 }
 void fragment() {
-	ALBEDO = tint * mix(0.75, 1.16, clamp(height, 0.0, 1.0));
+	ALBEDO = tint * mix(vec3(0.62,0.74,0.58),vec3(1.23,1.19,0.84),clamp(height,0.0,1.0));
+	BACKLIGHT = ALBEDO * 0.28 * smoothstep(0.2,0.8,height);
 	AO = mix(0.64,1.0,clamp(height*1.7,0.0,1.0));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
@@ -672,7 +687,7 @@ func plant_grass() -> void:
 			if not clear_for_grass(p): continue
 			var h := rng.randf_range(0.16,0.42)
 			var w := rng.randf_range(0.28,0.58)
-			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["5f9138","79ae45","9dc45a","6fa33c"][rng.randi_range(0,3)],angle)
+			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["508331","7caf36","b2d44c","659f32"][rng.randi_range(0,3)],angle)
 
 # Warm village lanterns; visuals stay on every preset, light emitters are optional.
 func build_lamps() -> void:

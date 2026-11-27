@@ -14,7 +14,8 @@ void vertex() {
 }
 void fragment() {
 	vec3 leaves = texture(paint,UV).rgb;
-	ALBEDO = leaves*mix(vec3(.84,.89,.81),vec3(1.07,1.05,.99),height);
+	ALBEDO = leaves*mix(vec3(.76,.88,.69),vec3(1.18,1.15,.83),height);
+	BACKLIGHT = ALBEDO * (0.12+0.24*height);
 	AO = mix(.75,1.,height);
 	ROUGHNESS = .92;
 }
