@@ -133,15 +133,62 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
           "$SIGNER" verify --print-certs build/evergrove.apk | tee "$RUNNER_TEMP/evergrove-certificate.txt"
           grep -Fxi 'Signer #1 certificate SHA-256 digest: 6893ff2d02148e789b36c9bfc08509bd9dee2033a6c89cf00a48636e916d4587' "$RUNNER_TEMP/evergrove-certificate.txt"
-          "$AAPT" dump badging build/evergrove.apk > "$RUNNER_TEMP/evergrove-badging.txt"
-          VERSION_CODE=$(sed -n 's/^version\/code=//p' export_presets.cfg)
-          VERSION_NAME=$(sed -n 's/^version\/name="\([^"]*\)"$/\1/p' export_presets.cfg)
-          grep -F "package: name='com.evergrove.game' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" "$RUNNER_TEMP/evergrove-badging.txt"
-          if grep -q '^application-debuggable' "$RUNNER_TEMP/evergrove-badging.txt"; then
-            echo "::error::Refusing to publish a debuggable APK."
-            exit 1
-          fi
-          "$AAPT" dump permissions build/evergrove.apk
+          "$AAPT" dump xmltree build/evergrove.apk AndroidManifest.xml > "$RUNNER_TEMP/evergrove-manifest.txt"
+          python3 - "$RUNNER_TEMP/evergrove-manifest.txt" <<'PY'
+          import pathlib, re, sys
+          manifest = pathlib.Path(sys.argv[1]).read_text()
+          preset = pathlib.Path("export_presets.cfg").read_text()
+          expected_code = int(re.search(r'^version/code=(\d+)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Android
+          path: build/evergrove.apk
+          if-no-files-found: error
+, preset, re.M).group(1))
+          expected_name = re.search(r'^version/name="([^"]+)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Android
+          path: build/evergrove.apk
+          if-no-files-found: error
+, preset, re.M).group(1)
+
+          def attribute(name):
+              match = re.search(r'^\s*A:\s+' + re.escape(name) + r'(?:\([^)]*\))?=(.*)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Android
+          path: build/evergrove.apk
+          if-no-files-found: error
+, manifest, re.M)
+              return match.group(1).strip() if match else None
+
+          def string_value(name):
+              value = attribute(name)
+              match = re.match(r'"([^"]*)"', value or "")
+              if not match:
+                  sys.exit("Missing or invalid manifest attribute: " + name)
+              return match.group(1)
+
+          def integer_value(name):
+              value = attribute(name)
+              match = re.fullmatch(r'\(type 0x[0-9a-fA-F]+\)\s*(0x[0-9a-fA-F]+|\d+)', value or "")
+              if not match:
+                  sys.exit("Missing or invalid manifest integer: " + name)
+              return int(match.group(1), 0)
+
+          if string_value("package") != "com.evergrove.game":
+              sys.exit("Unexpected package name")
+          if integer_value("android:versionCode") != expected_code:
+              sys.exit("Unexpected versionCode")
+          if string_value("android:versionName") != expected_name:
+              sys.exit("Unexpected versionName")
+          if attribute("android:debuggable") is not None and integer_value("android:debuggable") != 0:
+              sys.exit("Refusing to publish a debuggable APK")
+          print(f"Verified release manifest: com.evergrove.game {expected_name} ({expected_code})")
+          for name in re.findall(r'android\.permission\.[A-Z_0-9]+', manifest):
+              print("Permission reference:", name)
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: Evergrove-Android
