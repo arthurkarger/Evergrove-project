@@ -217,6 +217,122 @@ def character_part(kind):
     for poly in obj.data.polygons: poly.use_smooth=True
     paint(obj,mat,kind)
 
+# Original modular character meshes. Coordinates are Blender Z-up, front -Y.
+def sculpt_mesh(name, verts, faces, mat):
+    mesh=bpy.data.meshes.new(name)
+    mesh.from_pydata(verts,[],faces)
+    mesh.update()
+    uv=mesh.uv_layers.new()
+    for p in mesh.polygons:
+        p.use_smooth=True
+        for i in p.loop_indices:
+            x,y,z=mesh.vertices[mesh.loops[i].vertex_index].co
+            uv.data[i].uv=((math.atan2(y,x)/math.tau+.5),z+.5)
+    obj=bpy.data.objects.new(name,mesh)
+    bpy.context.collection.objects.link(obj)
+    paint(obj,mat,name)
+    return obj
+
+def sweep(name, points, widths, depths, mat):
+    # Tapered sculpted strands follow a curved centreline, not loose spheres.
+    verts=[]; faces=[]; n=12
+    for i,(x,y,z) in enumerate(points):
+        tangent=Vector(points[min(i+1,len(points)-1)])-Vector(points[max(0,i-1)])
+        tangent.normalize()
+        across=Vector((0,-1,0)).cross(tangent)
+        if across.length<.01: across=Vector((1,0,0))
+        across.normalize()
+        deep=tangent.cross(across).normalized()
+        for j in range(n):
+            a=math.tau*j/n
+            v=Vector((x,y,z))+across*(widths[i]*math.cos(a))+deep*(depths[i]*math.sin(a))
+            verts.append(tuple(v))
+        if i:
+            for j in range(n):
+                k=(j+1)%n
+                faces.append(((i-1)*n+j,(i-1)*n+k,i*n+k,i*n+j))
+    faces.append(tuple(range(n-1,-1,-1)))
+    faces.append(tuple(range((len(points)-1)*n,len(points)*n)))
+    return sculpt_mesh(name,verts,faces,mat)
+
+def hairstyle_model(style):
+    mat=material("Neutral",(.7,.7,.7),40)
+    n=40; rings=16; verts=[]; faces=[]
+    for i in range(rings+1):
+        for j in range(n):
+            a=math.tau*j/n
+            front=max(0,-math.sin(a))
+            back=max(0,math.sin(a))
+            edge=1.66-.64*front+.56*back
+            if style in (1,3,4): edge+=.24*(1-front)
+            if style==5: edge-=.12
+            t=.018+(edge-.018)*i/rings
+            ripple=1+.018*math.cos(9*a+t*3)
+            verts.append((.418*math.sin(t)*math.cos(a)*ripple,.358*math.sin(t)*math.sin(a)*ripple+.018,.416*math.cos(t)+.026))
+    for i in range(rings):
+        for j in range(n):
+            k=(j+1)%n
+            faces.append((i*n+j,(i+1)*n+j,(i+1)*n+k,i*n+k))
+    faces.append(tuple(range(n-1,-1,-1)))
+    sculpt_mesh("Scalp silhouette",verts,faces,mat)
+    # Layered swept fringe, with tapered tips and distinct silhouettes.
+    ends=[(-.31,.10),(-.17,.17),(.01,.13),(.19,.19),(.32,.12)]
+    if style in (1,3): ends=[(-.32,.07),(-.18,.22),(.02,.18),(.22,.14),(.32,.03)]
+    if style==5: ends=[(-.31,.13),(-.16,.10),(0,.09),(.16,.10),(.31,.13)]
+    for j,(x,z) in enumerate(ends):
+        start_x=x*.46-.06
+        sweep("Fringe",[(start_x,-.17,.37),(x*.66-.06,-.29,.31),(x*.92,-.343,.23),(x,-.31,z)],
+              [.06,.105,.085,.008],[.035,.065,.05,.008],mat)
+    if style in (1,3,4):
+        for side in (-1,1):
+            for j in range(3):
+                x=side*(.28+j*.043)
+                low=-.24 if style==1 else (-.42 if style==3 else -.50)
+                sweep("Side wave",[(side*.24,-.04+j*.07,.24),(x,-.05+j*.08,.07),(x*1.12,-.06+j*.08,-.14),(x*.90,-.12+j*.08,low+.03*j),(x*.78,-.09+j*.08,low-.03)],
+                      [.075,.105,.10,.075,.01],[.07,.09,.09,.055,.01],mat)
+    if style==2:
+        obj=rock("High bun",(0,.12,.43),(.22,.20,.21),mat)
+        for j in range(5):
+            a=j*math.tau/5
+            rock("Bun coil",(.12*math.cos(a),.12+.12*math.sin(a),.46),(.12,.12,.15),mat)
+    if style==4:
+        for side in (-1,1):
+            for j in range(5):
+                rock("Braided lock",(side*(.33+.025*(-1)**j),.015+.025*(-1)**j,-.08-j*.085),(.09,.085,.085),mat)
+    if style==5:
+        for j in range(10):
+            a=j*math.tau/10
+            rock("Soft curl",(.30*math.cos(a),.25*math.sin(a),.28+.05*math.sin(3*a)),(.145,.135,.14),mat)
+    if style==0:
+        for side in (-1,1):
+            sweep("Swept side",[(side*.21,.05,.31),(side*.36,.02,.19),(side*.43,-.02,.15)], [.10,.095,.008],[.055,.065,.008],mat)
+
+def garment_model(kind):
+    mat=material("Neutral",(.7,.7,.7),40)
+    # Cross sections with sculpted drape, cuffs and hem, in normalized dimensions.
+    profiles={
+        "shirt":[(-.5,.46,.39),(-.43,.50,.44),(-.16,.46,.47),(.18,.46,.5),(.35,.49,.43),(.5,.26,.30)],
+        "jacket":[(-.5,.45,.40),(-.40,.49,.48),(.0,.50,.5),(.28,.48,.46),(.44,.37,.36),(.5,.25,.25)],
+        "dress":[(-.5,.50,.48),(-.41,.49,.47),(-.1,.40,.38),(.18,.34,.34),(.40,.32,.30),(.5,.24,.23)],
+        "skirt":[(-.5,.50,.46),(-.43,.49,.45),(-.1,.39,.37),(.28,.30,.29),(.5,.27,.26)],
+        "sleeve":[(-.5,.42,.42),(-.38,.46,.45),(.0,.49,.49),(.32,.50,.50),(.5,.34,.34)],
+        "shorts":[(-.5,.44,.43),(-.42,.49,.48),(-.10,.50,.50),(.30,.49,.47),(.5,.42,.41)],
+        "boots":[(-.5,.43,.48),(-.39,.49,.5),(-.16,.50,.49),(.04,.43,.46),(.28,.39,.37),(.5,.37,.34)],
+    }
+    n=32; verts=[]; faces=[]
+    for z,rx,ry in profiles[kind]:
+        for j in range(n):
+            a=math.tau*j/n
+            fold=1+(.065 if kind in ("skirt","dress") else .015)*math.cos(a*8)*(1-z)
+            verts.append((rx*math.cos(a)*fold,ry*math.sin(a)*fold,z))
+    for i in range(len(profiles[kind])-1):
+        for j in range(n):
+            k=(j+1)%n
+            faces.append((i*n+j,i*n+k,(i+1)*n+k,(i+1)*n+j))
+    faces.append(tuple(range(n-1,-1,-1)))
+    faces.append(tuple(range((len(profiles[kind])-1)*n,len(profiles[kind])*n)))
+    sculpt_mesh(kind,verts,faces,mat)
+
 def bench():
     wood=material("Wood",(.56,.31,.13),9)
     dark=material("Support",(.23,.15,.10),10)
@@ -345,6 +461,14 @@ if GAME:
         reset()
         character_part(kind)
         export("character_"+kind)
+    for style in range(6):
+        reset()
+        hairstyle_model(style)
+        export("character_style_"+str(style))
+    for kind in ("shirt","jacket","dress","skirt","sleeve","shorts","boots"):
+        reset()
+        garment_model(kind)
+        export("character_garment_"+kind)
 else:
     for name, build, target, distance in [
         ("house",house,(0,0,1.4),8),

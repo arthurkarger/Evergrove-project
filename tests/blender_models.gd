@@ -13,6 +13,18 @@ func _initialize() -> void:
 func run() -> void:
 	for name in ["house_628693","house_946e57","house_96778c","house_577453","house_b76349","house_597e80","house_84905d","tree","pine","fruit_tree","bench","wildflowers","river_stones","table","chest","character_head","character_torso","character_limb","character_shoe","character_hair"]:
 		check(not BlenderModels.parts(name).is_empty(),"Imported "+name)
+	for i in 6:
+		check(not BlenderModels.parts("character_style_"+str(i)).is_empty(),"Sculpted hair "+str(i))
+	for kind in ["shirt","jacket","dress","skirt","sleeve","shorts","boots"]:
+		check(not BlenderModels.parts("character_garment_"+kind).is_empty(),"Sculpted garment "+kind)
+	var avatar=preload("res://cozy_character.gd").new()
+	root.add_child(avatar)
+	for i in 6:
+		avatar.configure_player([i,0,i,0],{"skin":0,"eye_shape":0,"eye_color":0},0)
+		var hair=avatar.body.get_node("Hair cap")
+		var parts=BlenderModels.parts("character_style_"+str(i))
+		if not parts.is_empty(): check(hair.mesh==parts[0][0],"Creator and game use sculpted hair "+str(i))
+	avatar.free()
 	var world = preload("res://main.tscn").instantiate()
 	root.add_child(world)
 	await physics_frame

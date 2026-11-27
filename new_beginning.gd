@@ -196,14 +196,14 @@ func choose_category(index: int) -> void:
 	match category:
 		0: selector("Pele",["Pêssego","Clara","Dourada","Mel","Castanha","Escura"],"skin")
 		1:
-			selector("Corte",["Curto","Franja","Coque"],0)
-			selector("Cor",["Castanho","Mel","Preto","Cobre"],1)
+			selector("Corte",Character.HAIRSTYLES,0)
+			selector("Cor",Character.HAIR_NAMES,1)
 		2:
 			selector("Formato",["Oval","Redondo","Amendoado"],"eye_shape")
 			selector("Cor",["Café","Avelã","Verde","Azul","Cinza"],"eye_color")
 		3:
-			selector("Roupa",["Camisa","Jardineira","Cachecol"],2)
-			selector("Cor",["Azul","Verde","Vinho","Mostarda"],3)
+			selector("Roupa",Character.OUTFITS,2)
+			selector("Cor",Character.CLOTH_NAMES,3)
 	avatar.configure_player(look,profile,0)
 
 func selector(label: String,choices: Array,key) -> void:

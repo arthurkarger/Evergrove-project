@@ -83,13 +83,24 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 	parent.add_child(part)
 	return part
 
-const HAIR_COLORS := ["674637","ad804d","393236","ad624c"]
-const CLOTH_COLORS := ["517b91","6e8964","91596b","b29554","49778c","b46454"]
+const HAIR_COLORS := ["674637","ad804d","393236","ad624c","d9b875","ac768d","77729a","b5aaa1"]
+const CLOTH_COLORS := ["517b91","6e8964","91596b","b29554","49778c","b46454","c4a4c9","e7d5b1"]
 const SKINS := ["f2c39b","fae1c8","dba071","b87a52","81513c","54392f"]
 const IRIS := ["403432","775039","56796a","506f8a","56515f"]
 
+const HAIRSTYLES := ["Curto repicado","Bob ondulado","Coque alto","Longo ondulado","Tranças","Cacheado"]
+const OUTFITS := ["Camiseta","Jardineira","Cachecol","Jaqueta","Vestido","Esportivo","Uniforme"]
+const HAIR_NAMES := ["Castanho","Mel","Preto","Cobre","Loiro","Rosa","Lavanda","Cinza"]
+const CLOTH_NAMES := ["Azul","Verde","Vinho","Mostarda","Lago","Terracota","Lilás","Creme"]
+
+func asset_mesh(part: MeshInstance3D, id: String) -> bool:
+	var data := BlenderModels.parts(id)
+	if data.is_empty(): return false
+	part.mesh = data[0][0] as Mesh
+	return true
+
 func configure_player(look: Array,profile: Dictionary,offset: float) -> void:
-	configure(Color(HAIR_COLORS[int(look[1])]),Color(CLOTH_COLORS[int(look[3])]),Color(SKINS[int(profile.skin)]),int(look[0]),int(look[2]),offset,int(profile.eye_shape),Color(IRIS[int(profile.eye_color)]))
+	configure(Color(HAIR_COLORS[clampi(int(look[1]),0,HAIR_COLORS.size()-1)]),Color(CLOTH_COLORS[clampi(int(look[3]),0,CLOTH_COLORS.size()-1)]),Color(SKINS[clampi(int(profile.get("skin",0)),0,SKINS.size()-1)]),clampi(int(look[0]),0,HAIRSTYLES.size()-1),clampi(int(look[2]),0,OUTFITS.size()-1),offset,clampi(int(profile.get("eye_shape",0)),0,2),Color(IRIS[clampi(int(profile.get("eye_color",0)),0,IRIS.size()-1)]))
 
 func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: int, offset: float,eye_shape:=0,iris:=Color("3a3030")) -> void:
 	if is_instance_valid(body) and body.get_parent() == self:
@@ -109,7 +120,20 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	var shoes := Color("705346")
 	var vivid := Color.from_hsv(shirt.h,clampf(shirt.s*1.17,0.0,0.93),shirt.v,shirt.a)
 	var cloth := vivid if outfit!=2 else vivid.lightened(0.08)
-	shape(body,"Torso",Vector3(0,0.78,0),Vector3(0.57,0.62,0.38),cloth,true,true)
+	var torso:=shape(body,"Torso",Vector3(0,0.78,0),Vector3(0.60,0.62,0.42),cloth,true,true)
+	if outfit>=3:
+		asset_mesh(torso,"character_garment_"+("jacket" if outfit==3 else ("dress" if outfit==4 else "shirt")))
+	if outfit==4 or outfit==6:
+		var skirt:=shape(body,"Skirt",Vector3(0,0.51,0),Vector3(0.72,0.37,0.50),cloth.darkened(.18),true,true)
+		asset_mesh(skirt,"character_garment_skirt")
+	if outfit==3 or outfit==6:
+		for side in [-1,1]:
+			shape(body,"Lapel",Vector3(side*.11,.94,.205),Vector3(.12,.24,.045),cloth.lightened(.27),true).rotation.z=side*.28
+		for j in 3:
+			shape(body,"Button",Vector3(0,.87-j*.10,.221),Vector3(.041,.041,.025),Color("e4cb98"))
+	if outfit==5:
+		for side in [-1,1]:
+			shape(body,"Sport stripe",Vector3(side*.20,.79,.195),Vector3(.045,.38,.034),Color("eee7d4"),true)
 	if outfit==0:
 		shape(body,"Pocket",Vector3(-0.104,0.84,0.176),Vector3(0.16,0.14,0.044),cloth.lightened(0.13),true)
 	if outfit==1:
@@ -122,24 +146,40 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 		leg.position = Vector3(side*0.145,0.55,0)
 		body.add_child(leg)
 		legs.append(leg)
-		shape(leg,"Trouser",Vector3(0,-0.20,0),Vector3(0.25,0.45,0.26),pants,true,true)
-		shape(leg,"Shoe",Vector3(0,-0.46,0.075),Vector3(0.29,0.17,0.38),shoes)
+		if outfit in [4,5,6]:
+			shape(leg,"Lower leg",Vector3(0,-.24,0),Vector3(.17,.42,.18),skin)
+			if outfit==5:
+				var shorts:=shape(leg,"Shorts",Vector3(0,-.065,0),Vector3(.29,.24,.30),cloth.darkened(.28),true,true)
+				asset_mesh(shorts,"character_garment_shorts")
+			shape(leg,"Sock",Vector3(0,-.37,0),Vector3(.19,.13,.19),Color("f3ebd8"),true)
+		else:
+			shape(leg,"Trouser",Vector3(0,-0.20,0),Vector3(0.25,0.45,0.26),pants,true,true)
+		var shoe:=shape(leg,"Shoe",Vector3(0,-0.46,0.075),Vector3(0.29,0.17,0.38),cloth.darkened(.30) if outfit==5 else shoes)
+		if outfit==3:
+			asset_mesh(shoe,"character_garment_boots")
+		shape(leg,"Sole",Vector3(0,-.515,.075),Vector3(.29,.055,.37),Color("e9dfce"))
 		var arm := Node3D.new()
 		arm.position = Vector3(side*0.34,0.94,0)
 		body.add_child(arm)
 		arms.append(arm)
 		arm.rotation.z = side*0.16
-		shape(arm,"Sleeve",Vector3(0,-0.13,0),Vector3(0.24,0.32,0.24),cloth,true)
+		var sleeve:=shape(arm,"Sleeve",Vector3(0,-0.10,0),Vector3(0.25,0.24 if outfit in [4,5,6] else 0.34,0.25),cloth,true)
+		asset_mesh(sleeve,"character_garment_sleeve")
 		shape(arm,"Hand",Vector3(0,-0.31,0.02),Vector3(0.19,0.25,0.20),skin)
 	shape(body,"Neck",Vector3(0,1.08,0),Vector3(0.24,0.23,0.25),skin)
-	shape(body,"Head",Vector3(0,1.37,0),Vector3(0.76,0.76,0.66),skin,false,true)
-	shape(body,"Hair cap",Vector3(0,1.55,-0.095),Vector3(0.79,0.51,0.72),hair,false,true)
-	shape(body,"Back hair",Vector3(0,1.37,-0.23),Vector3(0.73,0.63,0.42),hair)
+	shape(body,"Head",Vector3(0,1.37,0),Vector3(0.80,0.76,0.69),skin,false,true)
+	var hair_model:=shape(body,"Hair cap",Vector3(0,1.37,0),Vector3.ONE,hair,false,true)
+	var sculpted:=asset_mesh(hair_model,"character_style_"+str(clampi(hairstyle,0,5)))
+	if not sculpted:
+		hair_model.position=Vector3(0,1.55,-.095)
+		hair_model.scale=Vector3(.79,.51,.72)
+		shape(body,"Back hair",Vector3(0,1.37,-0.23),Vector3(0.73,0.63,0.42),hair)
 	for side in [-1,1]:
 		shape(body,"Ear",Vector3(side*0.365,1.37,0),Vector3(0.16,0.22,0.17),skin)
-		var eye := shape(body,"Eye",Vector3(side*0.135,1.43,0.306),[Vector3(.082,.125,.043),Vector3(.105,.101,.044),Vector3(.113,.071,.041)][eye_shape],iris)
-		var glint := shape(body,"Eye highlight",Vector3(side*0.135-0.014,1.43+[.026,.017,.012][eye_shape],0.329),Vector3(0.026,0.028,0.012),Color("fff5e4"))
-		for part in [eye,glint]:
+		var white:=shape(body,"Eye white",Vector3(side*.149,1.43,.318),[Vector3(.155,.183,.042),Vector3(.17,.16,.043),Vector3(.17,.105,.041)][eye_shape],Color("fff6e5"))
+		var eye := shape(body,"Eye",Vector3(side*0.149-.013,1.43,0.343),[Vector3(.099,.145,.032),Vector3(.111,.12,.032),Vector3(.112,.081,.031)][eye_shape],iris)
+		var glint := shape(body,"Eye highlight",Vector3(side*0.149-0.035,1.43+[.031,.023,.013][eye_shape],0.363),Vector3(0.026,0.028,0.012),Color("fff5e4"))
+		for part in [white,eye,glint]:
 			eyes.append(part)
 			eye_scales.append(part.scale)
 		var brow := shape(body,"Brow",Vector3(side*0.135,1.535,0.300),Vector3(0.092,0.024,0.018),hair.darkened(0.10))
@@ -147,17 +187,18 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 		shape(body,"Cheek",Vector3(side*0.218,1.32,0.283),Vector3(0.117,0.052,0.024),skin.lerp(Color("db8d83"),0.50))
 	shape(body,"Nose",Vector3(0,1.35,0.335),Vector3(0.105,0.086,0.105),skin.lightened(0.10))
 	shape(body,"Smile",Vector3(0,1.26,0.311),Vector3(0.090,0.025,0.019),Color("995e52"))
-	match hairstyle:
-		1:
-			for side in [-1,1]:
-				shape(body,"Side lock",Vector3(side*0.30,1.47,0.15),Vector3(0.23,0.45,0.31),hair)
-			shape(body,"Fringe",Vector3(-0.12,1.61,0.24),Vector3(0.48,0.24,0.27),hair.lightened(0.06)).rotation.z = 0.25
-		2:
-			shape(body,"Bun",Vector3(0,1.77,-0.18),Vector3(0.38,0.34,0.36),hair)
-			shape(body,"Fringe",Vector3(0.14,1.60,0.24),Vector3(0.44,0.23,0.25),hair).rotation.z = -0.22
-		_:
-			for j in 3:
-				shape(body,"Fringe",Vector3((j-1)*0.20,1.59+0.025*j,0.24),Vector3(0.29,0.26,0.27),hair.lightened(0.025*j))
+	if not sculpted:
+		match hairstyle:
+			1:
+				for side in [-1,1]:
+					shape(body,"Side lock",Vector3(side*0.30,1.47,0.15),Vector3(0.23,0.45,0.31),hair)
+				shape(body,"Fringe",Vector3(-0.12,1.61,0.24),Vector3(0.48,0.24,0.27),hair.lightened(0.06)).rotation.z = 0.25
+			2:
+				shape(body,"Bun",Vector3(0,1.77,-0.18),Vector3(0.38,0.34,0.36),hair)
+				shape(body,"Fringe",Vector3(0.14,1.60,0.24),Vector3(0.44,0.23,0.25),hair).rotation.z = -0.22
+			_:
+				for j in 3:
+					shape(body,"Fringe",Vector3((j-1)*0.20,1.59+0.025*j,0.24),Vector3(0.29,0.26,0.27),hair.lightened(0.025*j))
 	if outfit==1:
 		shape(body,"Overall bib",Vector3(0,0.81,0.18),Vector3(0.37,0.39,0.06),pants,true)
 	elif outfit==2:
@@ -179,7 +220,7 @@ func pose(direction: Vector2, delta: float, running := false) -> void:
 	var blink := 1.0-0.92*maxf(0.0,1.0-absf(blink_phase-4.55)/0.105)
 	for i in eyes.size():
 		eyes[i].scale=Vector3(eye_scales[i].x,eye_scales[i].y*blink,eye_scales[i].z)
-		if i%2==1: eyes[i].visible=blink>0.35
+		if i%3==2: eyes[i].visible=blink>0.35
 	for i in legs.size():
 		var side := 1.0 if i==0 else -1.0
 		legs[i].rotation.x = lerpf(legs[i].rotation.x,swing*side,minf(delta*16.0,1.0))

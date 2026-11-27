@@ -176,9 +176,8 @@ func draw() -> void:
 			link("Voltar","settlement")
 		"look":
 			title.text="Aparência"
-			var values := [["Curto","Franja","Coque"],["Castanho","Mel","Preto","Cobre"],["Camisa","Jardineira","Cachecol"],["Azul","Verde","Vinho","Mostarda"]]
-			if world.life.settlement.stages.get("stylist")=="installed" or int(house.look[3])>=4:
-				values[3].append_array(["Lago","Terracota"])
+			var model_catalog=preload("res://cozy_character.gd")
+			var values := [model_catalog.HAIRSTYLES,model_catalog.HAIR_NAMES,model_catalog.OUTFITS,model_catalog.CLOTH_NAMES]
 			for i in 4:
 				button(options,"%s · %s" % [["Corte","Cabelo","Roupa","Tecido"][i],values[i][int(house.look[i])]],change_look.bind(i,values[i].size()))
 			link("Voltar","home")
