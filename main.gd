@@ -20,6 +20,7 @@ var sun := DirectionalLight3D.new()
 var sky_fill := DirectionalLight3D.new()
 var sky_dome := Sky.new()
 var sky_paint := ProceduralSkyMaterial.new()
+var physical_sky := PhysicalSkyMaterial.new()
 var sky_period := -1
 var sky := Environment.new()
 var autosave := 0.0
@@ -53,6 +54,13 @@ func _ready():
 	sky_dome.radiance_size = Sky.RADIANCE_SIZE_128
 	sky_paint.sun_angle_max = 6.0
 	sky_paint.sun_curve = 0.25
+	physical_sky.rayleigh_coefficient = 2.4
+	physical_sky.mie_coefficient = 0.004
+	physical_sky.turbidity = 3.5
+	physical_sky.sun_disk_scale = 1.2
+	physical_sky.energy_multiplier = 0.72
+	physical_sky.ground_color = Color("647d50")
+	e.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	e.sky = sky_dome
 	env.environment = e
 	add_child(env)
@@ -301,19 +309,19 @@ func update_solar_lighting(phase: float) -> void:
 	var twilight := (1.0-smoothstep(0.02,0.58,absf(elevation)))*smoothstep(-0.25,0.015,elevation)
 	var dusk := phase>0.25 and phase<0.70
 	var horizon := Color("f6bca1") if not dusk else Color("ef977a")
-	var direct := Color("fff0da").lerp(Color("ffb16f"),twilight*0.92)
-	var strength := lerpf(0.0,0.87,smoothstep(-0.06,0.48,elevation))
-	sun.rotation_degrees = Vector3(-lerpf(8.0,72.0,maxf(elevation,0.0)),lerpf(-105.0,105.0,clampf(phase*2.0,0.0,1.0)),0)
+	var direct := Color("fff7e8").lerp(Color("ffb064"),twilight*0.85)
+	var strength := lerpf(0.0,1.02,smoothstep(-0.06,0.48,elevation))
+	sun.rotation_degrees = Vector3(-72.0*elevation,-105.0+phase*360.0,0)
 	sun.light_color = direct
 	sun.light_energy = strength
 	sun.light_specular = 0.45 if quality_level>=2 else 0.10
-	sky.ambient_light_energy = lerpf(0.32,0.46,daylight)
-	sky.ambient_light_color = Color("869bc8").lerp(Color("c6def1"),daylight).lerp(Color("e2b49a"),twilight*0.48)
+	sky.ambient_light_energy = lerpf(0.36,0.58,daylight)
+	sky.ambient_light_color = Color("899ed8").lerp(Color("f2f4e8"),daylight).lerp(Color("f5c39d"),twilight*0.30)
 	sky.background_color = Color("23354f").lerp(Color("a6cbdc"),daylight).lerp(horizon,twilight)
 	sky_fill.visible = quality_level>=2
 	sky_fill.rotation_degrees = Vector3(-48,sun.rotation_degrees.y+155,0)
 	sky_fill.light_color = Color("93b1eb").lerp(Color("bcd9ed"),daylight)
-	sky_fill.light_energy = lerpf(0.19,0.11,daylight)
+	sky_fill.light_energy = lerpf(0.24,0.09,daylight)
 	sky.background_mode = Environment.BG_SKY if quality_level>=2 and life.room<0 else Environment.BG_COLOR
 	var period := floori(phase*48.0)
 	if period!=sky_period:
@@ -326,9 +334,11 @@ func update_solar_lighting(phase: float) -> void:
 	village.update_water_light(sky.background_color,daylight,phase)
 	if grade_material != null:
 		grade_material.set_shader_parameter("dusk",twilight if life.room<0 else 0.0)
+		grade_material.set_shader_parameter("daylight",daylight if life.room<0 else 1.0)
+	village.update_contact_light(daylight)
 	sky.fog_enabled = quality_level>=2 and life.room<0
 	sky.fog_light_color = sky.background_color
-	sky.fog_density = 0.006 if quality_level==3 else 0.0025
+	sky.fog_density = 0.0018 if quality_level==3 else 0.0009
 	if life.room>=0:
 		sun.rotation_degrees = Vector3(-55,-35,0)
 		sun.light_color = Color("ffe9cb")
@@ -356,17 +366,22 @@ uniform float highlight_strength : hint_range(0.0, 0.6) = 0.16;
 uniform float saturation : hint_range(0.0, 1.2) = 1.0;
 uniform int quality = 2;
 uniform float dusk = 0.0;
+uniform float daylight = 1.0;
 void fragment() {
 	vec3 src = texture(world_screen, SCREEN_UV).rgb;
 	float lum = dot(src, vec3(0.2126, 0.7152, 0.0722));
-	vec3 c = mix(vec3(lum), src, saturation);
-	float shoulder = smoothstep(0.48, 1.0, max(c.r, max(c.g, c.b)));
-	c *= 1.0 - highlight_strength * shoulder;
-	// Gentle warm highlights and slightly cool shadows.
-	c *= mix(vec3(0.98, 1.0, 1.025), vec3(1.015, 1.0, 0.975), smoothstep(0.15, 0.75, lum));
+	// Boost muted colors more than already saturated colors, keeping skin and whites natural.
+	float chroma = max(src.r,max(src.g,src.b))-min(src.r,min(src.g,src.b));
+	float vibrance = (saturation-1.0)*(1.0-0.65*chroma)*mix(0.55,1.0,daylight);
+	vec3 c = mix(vec3(lum),src,1.0+vibrance);
+	c = mix(c,c*c*(3.0-2.0*c),0.11);
+	float peak = max(c.r,max(c.g,c.b));
+	float shoulder = smoothstep(0.76,1.0,peak);
+	c *= 1.0-highlight_strength*shoulder;
+	c *= mix(vec3(0.99,1.0,1.035),vec3(1.035,1.015,0.99),smoothstep(0.15,0.75,lum));
 	if (quality >= 2) {
 		float vignette = smoothstep(0.26, 0.72, length((SCREEN_UV - 0.5) * vec2(1.0, 0.83)));
-		c *= 1.0 - vignette * (0.055 + 0.035 * dusk);
+		c *= 1.0 - vignette * (0.018 + 0.022 * dusk);
 	}
 	if (quality == 3) {
 		// Subtle local contrast, without the old white bloom.
@@ -401,12 +416,15 @@ func apply_graphics(level: int) -> void:
 	if DisplayServer.get_name() != "headless":
 		RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
+	sky_dome.sky_material = physical_sky if quality_level==3 else sky_paint
+	sky.glow_enabled = false
 	village.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
 	if grade_overlay != null:
 		grade_overlay.visible = quality_level>0
 		grade_material.set_shader_parameter("quality",quality_level)
-		grade_material.set_shader_parameter("highlight_strength",0.20 if quality_level==3 else 0.16)
+		grade_material.set_shader_parameter("highlight_strength",0.08)
+		grade_material.set_shader_parameter("saturation",[1.0,1.17,1.27,1.32][quality_level])
 	update_solar_lighting(life.clock/life.DAY_SECONDS)
 
 func save_game() -> void:
