@@ -7,6 +7,7 @@ var phase: float
 var side: float
 var lake: Vector2
 var radii: Vector2
+var legacy_channel := false
 
 func _init(layout: int, world_seed: int) -> void:
 	variant=layout
@@ -20,18 +21,38 @@ func coast(p: Vector2) -> float:
 	var norm:=pow(pow(absf(p.x/38.5),4)+pow(absf(p.y/31.5),4),0.25)
 	return (1.0-norm)*34 + 1.35*sin(3*a+phase)+0.85*sin(5*a-phase)+0.45*cos(8*a+phase)
 
+# Each natural map has a continuous inlet from the ocean, through its lake,
+# and a short rounded upstream arm. The southern land corridor remains open.
+func river_center(z: float) -> float:
+	var bend:=side*(21.0+4.0*sin(z*.14+variant)+2.0*cos(z*.23))
+	var lake_blend:=1.0-smoothstep(2.0,9.0,absf(z-lake.y))
+	return lerpf(bend,lake.x,lake_blend)
+
+func river_end() -> float:
+	return 9.5-float(variant)*.7
+
+func smooth_union(a: float,b: float,k: float) -> float:
+	var h:=maxf(k-absf(a-b),0.0)/k
+	return minf(a,b)-h*h*k*.25
+
 func inland(p: Vector2) -> float:
 	var q:=(p-lake)/radii
 	var a:=q.angle()
 	var edge:=0.84+0.055*cos(3*a+phase)+0.045*sin(2*a-phase)
 	var pond:=(q.length()-edge)*minf(radii.x,radii.y)
 	if variant<0: return pond
-	# The channel narrows into rounded ends at the ford and beside the lake.
-	var center:=side*(21+4*sin(p.y*0.14+variant)+2*cos(p.y*0.23))
-	var width:=1.12+0.36*variant
-	var ford:=maxf(0,2.6+width-absf(p.y-14+variant))
-	var river:=Vector2(p.x-center,ford).length()-width
-	return minf(pond,maxf(river,1.5-pond))
+	if legacy_channel:
+		var center:=side*(21+4*sin(p.y*0.14+variant)+2*cos(p.y*0.23))
+		var old_width:=1.12+0.36*variant
+		var ford:=maxf(0,2.6+old_width-absf(p.y-14+variant))
+		var old_river:=Vector2(p.x-center,ford).length()-old_width
+		return minf(pond,maxf(old_river,1.5-pond))
+	var z:=minf(p.y,river_end())
+	var width:=1.28+.20*variant+.23*sin(z*.26+phase)
+	width*=lerpf(1.0,.73,smoothstep(river_end()-4.0,river_end(),z))
+	var river:=Vector2(p.x-river_center(z),maxf(0.0,p.y-river_end())).length()-width
+	# Join the lake to the river with a soft confluence, not a sandy ring.
+	return smooth_union(pond,river,1.1)
 
 func distance_at(p: Vector2) -> float:
 	return minf(coast(p),inland(p))
@@ -41,8 +62,8 @@ func terrain_at(p: Vector2) -> String:
 	var fresh:=inland(p)
 	if sea<0: return "ocean"
 	if fresh<0: return "freshwater"
-	if minf(sea,fresh)<0.85: return "wet_bank"
-	if sea<3.25 or fresh<1.3: return "sand"
+	if sea<.85 or fresh<.35: return "wet_bank"
+	if sea<3.25 or fresh<.75: return "sand"
 	return "grass"
 
 func texture() -> ImageTexture:

@@ -68,6 +68,15 @@ func check_frontier(w) -> void:
 		check(not layout.trees.is_empty() and layout.shoreline.terrain_at(layout.shoreline.lake)=="freshwater","Natural terrain "+key)
 		check(not layouts.has(layout.shoreline.lake),"Distinct waterways")
 		layouts.append(layout.shoreline.lake)
+		var shore=layout.shoreline
+		# Sample the entire channel at quarter-unit intervals, including the lake
+		# junction, all the way from ocean to the rounded upstream head.
+		for i in range(-160,roundi(shore.river_end()*4)+1):
+			var z:=float(i)*.25
+			check(shore.inland(Vector2(shore.river_center(z),z))<0,"Continuous channel "+key+" at "+str(z))
+		check(shore.coast(Vector2(shore.river_center(-40),-40))<0,"Channel reaches sea "+key)
+		check(shore.inland(Vector2(shore.river_center(18),18))>1.35,"Dry southern crossing "+key)
+		check(shore.inland(shore.lake)<0,"Lake connected "+key)
 	var life=w.life
 	var s=life.settlement
 	check(w.village.house_centers.size()==1 and w.town.actors.is_empty(),"Single starter cottage")

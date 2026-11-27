@@ -36,6 +36,22 @@ func _init(key: String, world_seed: int) -> void:
 		if trees.size()<34: trees.append(p)
 		elif blossoms.size()<22: blossoms.append(p)
 
+# Avoid overwriting existing fields/buildings when upgrading an older save.
+# Only maps with a conflict retain their original water contour.
+func protect_existing_layout(plots: Array, objects: Array, house) -> void:
+	for plot in plots:
+		if shoreline.inland(Vector2(plot.x,plot.z))<1.35:
+			shoreline.legacy_channel=true
+			return
+	for obj in objects:
+		if int(obj.room)!=-1: continue
+		var footprint: Rect2i=house.rect(obj)
+		for x in range(footprint.position.x,footprint.end.x):
+			for z in range(footprint.position.y,footprint.end.y):
+				if shoreline.inland(Vector2(x,z))<1.35:
+					shoreline.legacy_channel=true
+					return
+
 func thumbnail() -> Texture2D:
 	var img:=Image.create(132,108,false,Image.FORMAT_RGB8)
 	var palette: Dictionary={"ocean":"519db0","freshwater":"7ebeb1","wet_bank":"c7ab80","sand":"efd7a1","grass":MAPS[id][2]}
@@ -43,7 +59,9 @@ func thumbnail() -> Texture2D:
 		for x in 132:
 			var point:=(Vector2(x,y)+Vector2.ONE*0.5)/1.5-Vector2(44,36)
 			img.set_pixel(x,y,Color(palette[shoreline.terrain_at(point)]))
-	for p: Vector2i in trees: img.fill_rect(Rect2i(Vector2i((Vector2(p)+Vector2(44,36))*1.5),Vector2i(2,2)),Color("44764c"))
+	for p: Vector2i in trees:
+		if shoreline.distance_at(Vector2(p))>2.0:
+			img.fill_rect(Rect2i(Vector2i((Vector2(p)+Vector2(44,36))*1.5),Vector2i(2,2)),Color("44764c"))
 	img.fill_rect(Rect2i(52,80,6,5),Color("875f47"))
 	return ImageTexture.create_from_image(img)
 
@@ -51,6 +69,12 @@ func render(v) -> void:
 	v.world_grid=Grid.new(shoreline.AREA,id,seed_value)
 	v.piece("ground",Vector3(0,-0.32,0),Vector3(144,0.64,128),MAPS[id][2])
 	v.cottage(-7,19.45,"628693","f3d1a0")
-	for p: Vector2i in trees: v.tree(p.x,p.y,0.78+0.07*posmod(p.x,5),MAPS[id][3])
-	for p: Vector2i in blossoms: v.flowers(p.x,p.y,["eda879","efc879","e9b0c3"][posmod(p.x,3)])
+	# Keep established vegetation coordinates for save compatibility, but
+	# avoid placing trunks and flowers in the new water or on narrow banks.
+	for p: Vector2i in trees:
+		if shoreline.distance_at(Vector2(p))>2.0:
+			v.tree(p.x,p.y,0.78+0.07*posmod(p.x,5),MAPS[id][3])
+	for p: Vector2i in blossoms:
+		if shoreline.distance_at(Vector2(p))>1.6:
+			v.flowers(p.x,p.y,["eda879","efc879","e9b0c3"][posmod(p.x,3)])
 	v.plant_grass()

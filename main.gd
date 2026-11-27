@@ -85,12 +85,28 @@ func _ready():
 	add_child(life)
 	if preload("res://natural_maps.gd").MAPS.has(life.map_id):
 		village.landscape=preload("res://natural_maps.gd").new(life.map_id,life.map_seed)
+		village.landscape.protect_existing_layout(life.plots,life.house.objects,life.house)
 		town.frontier=true
 	add_child(village)
 	add_child(atmosphere)
 	player = CharacterBody3D.new()
 	add_child(player)
 	player.position = life.saved_position
+	if village.landscape and life.room==-1:
+		var old_position:=Vector2(player.position.x,player.position.z)
+		if village.shoreline.distance_at(old_position)<.45:
+			var nearest:=Vector2(0,6)
+			var best:=INF
+			for x in range(-38,39):
+				for z in range(-31,32):
+					var p:=Vector2(x,z)
+					if village.shoreline.distance_at(p)<1.6 or village.world_grid.reserved.has(Vector2i(x,z)): continue
+					if life.house.at(-1,Vector2i(x,z))>=0 or life.cell_index.has(Vector2i(x,z)): continue
+					var d:=p.distance_squared_to(old_position)
+					if d<best:
+						best=d
+						nearest=p
+			player.position=Vector3(nearest.x,.51,nearest.y)
 	var c := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
 	shape.radius = 0.28

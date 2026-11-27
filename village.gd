@@ -188,7 +188,7 @@ void fragment() {
 	float surge = 0.14 + 0.43 * (0.5+0.5*sin(TIME*1.65 + sin(p.x*0.19+p.y*0.13)*0.85));
 	float runup = mix(0.035, surge, ocean);
 	if (distance_to_land < -runup) discard;
-	float depth = smoothstep(0.,5.0,max(0.0,distance_to_land));
+	float depth = smoothstep(0.,mix(1.65,5.0,ocean),max(0.0,distance_to_land));
 	float shore = 1.0-depth;
 	float t = TIME;
 	vec2 flow = normalize(vec2(0.83,0.56));
@@ -198,7 +198,7 @@ void fragment() {
 	float wave_a = sin(a+0.65*sin(b*0.56));
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
-	vec3 sand = vec3(0.24,0.70,0.58);
+	vec3 sand = vec3(0.19,0.57,0.49);
 	vec3 deep = mix(vec3(0.045,0.33,0.36),vec3(0.025,0.26,0.42),step(banks.x,banks.y));
 	vec3 water = mix(sand,deep,depth);
 	float wash = distance_to_land - (0.17+0.09*sin(t*1.3+dot(p,vec2(.7,.43))));
@@ -238,7 +238,7 @@ void fragment() {
 #ifdef CLEAR_WATER
 	vec2 bend = (mat3(VIEW_MATRIX)*vec3(nx,0.,nz)).xy * (.006+.014*depth);
 	vec3 riverbed = texture(scenery,clamp(SCREEN_UV+bend,vec2(.001),vec2(.999))).rgb;
-	float opacity = clamp(mix(.42,.88,depth) + fresnel*.07 + breaker*.48,0.0,1.0);
+	float opacity = clamp(mix(.68,.94,depth) + fresnel*.04 + breaker*.28,0.0,1.0);
 	ALBEDO *= opacity;
 	EMISSION = riverbed*(1.-opacity);
 #endif
@@ -281,8 +281,10 @@ void fragment() {
 	ALBEDO = grass_base * mix(vec3(1.),COLOR.rgb / vec3(.58,.71,.47),0.28) + vec3(shade, shade, shade * 0.55);
 	vec2 bank=(texture(shore_map,p/vec2(100.,84.)+0.5).rg-0.5)*16.;
 	float wet=min(bank.x,bank.y);
-	float edge=min(bank.x-2.75,bank.y-0.85)+patch*0.22;
+	float edge=min(bank.x-2.75,bank.y-0.46)+patch*0.13;
 	vec3 beach=mix(vec3(.48,.34,.19),vec3(.91,.77,.50),smoothstep(-.45,1.20,wet));
+	vec3 river_bank=mix(vec3(.36,.29,.16),vec3(.67,.56,.34),smoothstep(-.1,.55,wet));
+	beach=mix(beach,river_bank,step(bank.y,bank.x));
 	float tide=0.14+0.43*(0.5+0.5*sin(TIME*1.65+sin(p.x*0.19+p.y*0.13)*0.85));
 	float damp=(1.0-smoothstep(tide+0.10,tide+0.65,bank.x))*step(bank.x,bank.y);
 	beach*=mix(1.0,0.73,damp);
