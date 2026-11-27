@@ -633,16 +633,18 @@ void fragment(){
 	return mat
 
 func setup_lake_probe() -> void:
-	if DisplayServer.get_name()=="headless": return
+	if DisplayServer.get_name()=="headless" or RenderingServer.get_current_rendering_method()=="gl_compatibility": return
 	lake_probe=ReflectionProbe.new()
 	lake_probe.position=Vector3(22,1.25,-7)
 	lake_probe.size=Vector3(21,12,25)
 	lake_probe.intensity=0.65
 	lake_probe.max_distance=36.0
 	lake_probe.cull_mask=1
+	lake_probe.reflection_mask=2
+	lake_probe.ambient_mode=ReflectionProbe.AMBIENT_DISABLED
 	lake_probe.update_mode=ReflectionProbe.UPDATE_ONCE
-	lake_probe.box_projection=true
-	lake_probe.enable_shadows=true
+	lake_probe.box_projection=false
+	lake_probe.enable_shadows=false
 	add_child(lake_probe)
 
 func update_water_light(sky_color: Color, day: float, phase: float) -> void:
