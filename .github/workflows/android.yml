@@ -1,5 +1,13 @@
 name: Android APK
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'tools/**'
+      - '.github/workflows/blender-assets.yml'
+concurrency:
+  group: android-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
