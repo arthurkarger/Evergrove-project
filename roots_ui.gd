@@ -72,7 +72,8 @@ func bar_button(parent: Container,i: int,inventory: bool) -> Button:
 	decorate(b)
 	b.custom_minimum_size = Vector2(51,48)
 	b.expand_icon = true
-	b.add_theme_constant_override("icon_max_width",32)
+	b.add_theme_constant_override("icon_max_width",42 if inventory else 36)
+	b.add_theme_font_size_override("font_size",13)
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	parent.add_child(b)
 	if inventory: b.pressed.connect(cell_pressed.bind(i))
@@ -136,7 +137,7 @@ func build(model) -> void:
 	shade.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel",panel_style("fff1d6","d2bf97"))
+	panel.add_theme_stylebox_override("panel",panel_style("fff5df","d8c59d"))
 	center.add_child(panel)
 	var column := VBoxContainer.new()
 	panel.add_child(column)
@@ -160,7 +161,7 @@ func build(model) -> void:
 	column.add_child(grid)
 	for i in Bag.SIZE:
 		var cell := bar_button(grid,i,true)
-		cell.custom_minimum_size=Vector2(64,55)
+		cell.custom_minimum_size=Vector2(72,64)
 		cells.append(cell)
 	column.add_child(held_label)
 	shade.hide()
@@ -191,8 +192,8 @@ func refresh() -> void:
 			if item == null and i < Bag.QUICK: b.text = str(i+1)
 			b.tooltip_text = "Vazio" if item == null else Bag.NAMES[item.id]
 			var chosen: bool = i == source if shade.visible else i == bag.selected
-			b.self_modulate = Color.WHITE if chosen or i < Bag.QUICK else Color("c2c5ba")
-			b.add_theme_stylebox_override("normal",Style.box(Color("d5e5ba") if chosen else Color("fff3dce8"),Color("799763") if chosen else Color("d9cba8"),14,5,2 if chosen else 1))
+			b.self_modulate = Color.WHITE
+			b.add_theme_stylebox_override("normal",Style.box(Color("dae9bb") if chosen else Color("f4e7cb"),Color("779958") if chosen else Color("d8c59d"),14,5,2 if chosen else 1))
 	hint.text = "Toque em um item para organizar." if source < 0 else "%s · escolha o destino" % Bag.NAMES[bag.slots[source].id]
 	var used := 0
 	for item in bag.slots:
