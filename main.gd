@@ -13,6 +13,7 @@ var grade_overlay: ColorRect
 var grade_material: ShaderMaterial
 var quality_level := 2
 
+var atmosphere:=preload("res://weather_effects.gd").new()
 var life := preload("res://homestead.gd").new()
 var hud := preload("res://roots_ui.gd").new()
 var pad := preload("res://pad.gd").new()
@@ -86,6 +87,7 @@ func _ready():
 		village.landscape=preload("res://natural_maps.gd").new(life.map_id,life.map_seed)
 		town.frontier=true
 	add_child(village)
+	add_child(atmosphere)
 	player = CharacterBody3D.new()
 	add_child(player)
 	player.position = life.saved_position
@@ -397,6 +399,8 @@ func update_world_ui() -> void:
 	var phase := life.clock / life.DAY_SECONDS
 	var hours := posmod(6+floori(phase*24),24)
 	var minutes := floori(fmod(phase*24,1.0)*6)*10
+	hud.weather_icon.texture=hud.WEATHER_ICONS[life.weather.kind]
+	hud.weather_icon.tooltip_text=life.weather.NAMES[life.weather.kind]
 	hud.clock_label.text = "Dia %d   %02d:%02d   ·   %d folhas" % [life.day,hours,minutes,life.social.coins]
 	update_solar_lighting(phase)
 
@@ -430,7 +434,7 @@ func update_solar_lighting(phase: float) -> void:
 		sky_paint.ground_bottom_color = Color("41534d").lerp(Color("829484"),daylight)
 	sky.glow_enabled = quality_level==3 and life.room<0 and RenderingServer.get_current_rendering_method()=="forward_plus" and DisplayServer.get_name()!="headless"
 	village.update_lamps(daylight)
-	village.update_water_light(sky.background_color,daylight,phase)
+
 	if grade_material != null:
 		grade_material.set_shader_parameter("dusk",twilight if life.room<0 else 0.0)
 		grade_material.set_shader_parameter("daylight",daylight if life.room<0 else 1.0)
@@ -440,7 +444,20 @@ func update_solar_lighting(phase: float) -> void:
 	sky.fog_density = (0.0018 if quality_level==3 else 0.0009)*(1.0+twilight*2.5)
 	sky.fog_sun_scatter = 0.22+0.38*twilight
 	sky.fog_light_energy = lerpf(0.38,0.9,daylight)
+	atmosphere.set_outdoors(life.room<0)
+	if life.room<0:
+		var cover: float=life.weather.levels.z
+		sun.light_energy*=1.-cover*.76
+		sun.shadow_opacity=1.-.58*cover
+		sky.ambient_light_color=sky.ambient_light_color.lerp(Color("99abbe"),cover*.68)
+		sky.background_color=sky.background_color.lerp(Color("596579").darkened((1.-daylight)*.62),cover*.75)
+		sky.fog_light_color=sky.background_color
+		sky.fog_density*=1.+2.5*cover
+		village.update_weather(life.weather.levels)
+		village.update_water_light(sky.background_color,daylight*(1.-cover*.6),phase)
+		atmosphere.apply(life.weather,player.position,daylight)
 	if life.room>=0:
+		sun.shadow_opacity=1.
 		sun.rotation_degrees = Vector3(-55,-35,0)
 		sun.light_color = Color("ffe9cb")
 		sun.light_energy = 0.36
@@ -526,6 +543,7 @@ func apply_graphics(level: int) -> void:
 	sky.tonemap_white = 2.0
 	sky.tonemap_exposure = 1.04
 	village.set_quality(quality_level)
+	atmosphere.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
 	if grade_overlay != null:
 		grade_overlay.visible = quality_level>0
@@ -560,6 +578,7 @@ func _physics_process(delta):
 	if hud.shade.visible or village_menu.shade.visible: return
 	life.played+=delta
 	var new_day := life.advance(delta)
+	atmosphere.step(delta,life.weather,village.shoreline,player.position)
 	town.step(delta,game_hour(),life.room)
 	autosave += delta
 	if new_day or autosave >= 5.0:

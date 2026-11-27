@@ -25,6 +25,8 @@ const ICONS := {
 const INK := {"i":"d6dae0","a":"789ca5","w":"ab784d","y":"ecd399","g":"8da857","r":"db8876"}
 var bag
 var icons := {}
+const WEATHER_ICONS:={"sun":preload("res://assets/weather/sun.svg"),"rain":preload("res://assets/weather/rain.svg"),"wind":preload("res://assets/weather/wind.svg"),"storm":preload("res://assets/weather/storm.svg")}
+var weather_icon:=TextureRect.new()
 var clock_label := Label.new()
 var note := Label.new()
 var action := Button.new()
@@ -135,7 +137,13 @@ func build(model) -> void:
 	var info := PanelContainer.new()
 	info.add_theme_stylebox_override("panel",Style.box(Color("fff2ded9"),Color.TRANSPARENT,14,7,0))
 	top.add_child(info)
-	info.add_child(clock_label)
+	var time_row:=HBoxContainer.new()
+	info.add_child(time_row)
+	time_row.add_child(weather_icon)
+	weather_icon.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	weather_icon.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	weather_icon.custom_minimum_size=Vector2(23,23)
+	time_row.add_child(clock_label)
 	clock_label.add_theme_color_override("font_color",Style.INK)
 	clock_label.add_theme_font_size_override("font_size",16)
 	var row := HBoxContainer.new()

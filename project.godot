@@ -1,7 +1,7 @@
 config_version=5
 [application]
 config/name="Evergrove"
-config/version="0.6.4"
+config/version="0.6.5"
 config/icon="res://assets/icons/evergrove.svg"
 run/main_scene="res://title.tscn"
 [display]

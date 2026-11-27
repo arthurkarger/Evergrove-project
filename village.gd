@@ -26,6 +26,10 @@ var lake_probe: ReflectionProbe
 var water_surfaces: Array[MultiMeshInstance3D] = []
 var water_simple: ShaderMaterial
 var water_clear: ShaderMaterial
+var bloom_material:=ShaderMaterial.new()
+var wet_meshes: Dictionary={}
+var wet_materials: Dictionary={}
+var last_weather:=Vector3(-1,-1,-1)
 var wind_materials: Array[ShaderMaterial] = []
 var tree_meshes := {}
 var shafts: Array[MultiMeshInstance3D] = []
@@ -62,6 +66,8 @@ func _ready() -> void:
 	var contact_plane := PlaneMesh.new()
 	contact_plane.size = Vector2.ONE
 	meshes["contact"] = contact_plane
+	meshes["flower_part"]=crown
+	bloom_material.shader=preload("res://shaders/wind_flowers.gdshader")
 	meshes["sunshaft"]=QuadMesh.new()
 	shaft_material.shader=preload("res://shaders/sunshaft.gdshader")
 	meshes["lantern_glass"] = BoxMesh.new()
@@ -118,7 +124,7 @@ func flush_imported() -> void:
 		for part in group["parts"]:
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.mesh = wind_mesh(part[0]) if group.name in ["tree","pine","fruit_tree"] else part[0]
+			mm.mesh = wind_mesh(part[0]) if group.name in ["tree","pine","fruit_tree"] else weather_mesh(part[0])
 			mm.instance_count = transforms.size()
 			var local: Transform3D = part[1]
 			for i in transforms.size():
@@ -129,6 +135,17 @@ func flush_imported() -> void:
 			add_child(instance)
 			blender_batches.append(instance)
 	imported_groups.clear()
+
+func weather_mesh(original: Mesh) -> Mesh:
+	if wet_meshes.has(original): return wet_meshes[original]
+	var mesh:=original.duplicate() as Mesh
+	for i in mesh.get_surface_count():
+		var original_mat:=original.surface_get_material(i) as StandardMaterial3D
+		if not original_mat: continue
+		if not wet_materials.has(original_mat): wet_materials[original_mat]=original_mat.duplicate()
+		mesh.surface_set_material(i,wet_materials[original_mat])
+	wet_meshes[original]=mesh
+	return mesh
 
 func wind_mesh(original: Mesh) -> Mesh:
 	if tree_meshes.has(original): return tree_meshes[original]
@@ -234,6 +251,8 @@ shader_type spatial;
 render_mode diffuse_burley, specular_disabled;
 uniform int quality = 2;
 uniform sampler2D shore_map : repeat_disable, filter_linear;
+uniform float rain_wet=0.;
+uniform float cloud_cover=0.;
 uniform sampler2D art_grass : source_color, repeat_enable, filter_linear_mipmap;
 uniform bool has_art_grass = false;
 varying vec3 world_pos;
@@ -268,8 +287,20 @@ void fragment() {
 	float damp=(1.0-smoothstep(tide+0.10,tide+0.65,bank.x))*step(bank.x,bank.y);
 	beach*=mix(1.0,0.73,damp);
 	ALBEDO=mix(beach*(1.+0.044*detail+0.023*patch),ALBEDO,smoothstep(-.55,.55,edge));
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
+	float pool=0.;
+	if(rain_wet>.01){
+		float basin=sin(p.x*1.5+sin(p.y*.85))*cos(p.y*1.21+.7*sin(p.x*.81));
+		pool=smoothstep(.79,.93,basin)*smoothstep(.1,.55,rain_wet)*smoothstep(.25,1.3,wet);
+		float ring=sin(length(fract(p*1.6)-.5)*27.-TIME*8.);
+		vec3 reflection=vec3(.28,.44,.46)*(1.+.08*ring);
+		ALBEDO=mix(ALBEDO*(1.-.23*rain_wet),reflection,pool*.79);
+	}
+	if(cloud_cover>.015){
+		float shade_cloud=.5+.5*sin(p.x*.16+TIME*.14+sin(p.y*.22))*cos(p.y*.11+TIME*.11);
+		ALBEDO*=1.-cloud_cover*shade_cloud*.15;
+	}
+	ROUGHNESS=mix(.98,.21,pool);
+	SPECULAR=.08+.40*pool;
 }
 """
 	var result := ShaderMaterial.new()
@@ -348,6 +379,8 @@ func flush_batches() -> void:
 			instance.material_override = contact_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			contact_batches.append(instance)
+		elif kind=="flower_part":
+			instance.material_override=bloom_material
 		elif kind == "grass":
 			instance.material_override = tuft_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -545,11 +578,11 @@ func flowers(x: float,z: float,color: String) -> void:
 	world_grid.reserve_box(Vector2(x,z),Vector2(1.0,1.0),"Canteiro")
 	for i in 8:
 		var p := Vector3(x+cos(i*2.4)*sqrt(i)*0.28,0,z+sin(i*2.4)*sqrt(i)*0.21)
-		piece("round",p+Vector3.UP*0.14,Vector3(0.31,0.28,0.25),"658b59")
+		piece("flower_part",p+Vector3.UP*0.14,Vector3(0.31,0.28,0.25),"658b59")
 		for j in 4:
 			var angle := TAU*j/4.0
-			piece("round",p+Vector3(cos(angle)*0.09,0.29,sin(angle)*0.09),Vector3(0.15,0.10,0.15),color)
-		piece("round",p+Vector3.UP*0.33,Vector3(0.10,0.075,0.10),"e4b65d")
+			piece("flower_part",p+Vector3(cos(angle)*0.09,0.29,sin(angle)*0.09),Vector3(0.15,0.10,0.15),color)
+		piece("flower_part",p+Vector3.UP*0.33,Vector3(0.10,0.075,0.10),"e4b65d")
 
 func build_groves() -> void:
 	for i in range(-5,6):
@@ -630,6 +663,7 @@ func grass_shader() -> ShaderMaterial:
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_disabled;
 uniform int quality = 2;
+uniform float air=.08;
 varying float height;
 varying vec3 tint;
 void vertex() {
@@ -638,7 +672,7 @@ void vertex() {
 	vec3 p = MODEL_MATRIX[3].xyz;
 	float wind = sin(TIME * 1.45 + p.x * 0.55 + p.z * 0.71);
 	if (quality > 0) {
-		VERTEX.x += wind * height * height * 0.15;
+		VERTEX.x += wind * height * height * (.13+.43*air);
 		VERTEX.z += cos(TIME * 1.1 + p.z * 0.64) * height * height * 0.08;
 	}
 }
@@ -646,8 +680,8 @@ void fragment() {
 	ALBEDO = tint * mix(vec3(0.62,0.74,0.58),vec3(1.23,1.19,0.84),clamp(height,0.0,1.0));
 	BACKLIGHT = ALBEDO * 0.28 * smoothstep(0.2,0.8,height);
 	AO = mix(0.64,1.0,clamp(height*1.7,0.0,1.0));
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
+	ROUGHNESS=.96;
+	SPECULAR=0.;
 }
 """
 	var mat := ShaderMaterial.new()
@@ -763,6 +797,7 @@ func make_foliage_material() -> ShaderMaterial:
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_schlick_ggx;
 uniform int quality = 2;
+uniform float air=.08;
 varying vec3 tint;
 varying vec3 local_pos;
 void vertex() {
@@ -772,7 +807,7 @@ void vertex() {
 	if (quality>0) {
 		float breeze = sin(TIME*1.12+p.x*0.39+p.z*0.24);
 		float gust = sin(TIME*0.57+p.z*0.68);
-		VERTEX.x += (breeze*0.033+gust*0.022)*(0.5+VERTEX.y);
+		VERTEX.x += (breeze*0.033+gust*0.022)*(0.5+VERTEX.y)*(1.+air*3.);
 		VERTEX.z += gust*0.025;
 	}
 }
@@ -799,6 +834,7 @@ func make_surface_material(kind: int) -> ShaderMaterial:
 	shader.code = """
 shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
+uniform float rain_wet=0.;
 uniform int surface_kind = 0;
 uniform int quality = 2;
 varying vec3 tint;
@@ -832,9 +868,9 @@ void fragment(){
 		}
 		shade+=n;
 	}
-	ALBEDO=tint*shade;
+	ALBEDO=tint*shade*(1.-.23*rain_wet);
 	AO = quality>0 ? clamp(0.95+n*1.5,0.72,1.0) : 1.0;
-	ROUGHNESS=surface_kind==3?0.83:0.94;
+	ROUGHNESS=mix(surface_kind==3?0.83:0.94,.42,rain_wet);
 	SPECULAR=0.08;
 }
 """
@@ -895,6 +931,21 @@ void fragment(){
 	var mat := ShaderMaterial.new()
 	mat.shader=shader
 	return mat
+
+func update_weather(levels: Vector3) -> void:
+	if last_weather.distance_squared_to(levels)<0.000025: return
+	last_weather=levels
+	world_materials[0].set_shader_parameter("rain_wet",levels.x)
+	world_materials[0].set_shader_parameter("cloud_cover",levels.z)
+	world_materials[3].set_shader_parameter("air",levels.y)
+	bloom_material.set_shader_parameter("air",levels.y)
+	foliage_material.set_shader_parameter("air",levels.y)
+	for mat in wind_materials: mat.set_shader_parameter("air",levels.y)
+	for mat in surface_materials.values(): mat.set_shader_parameter("rain_wet",levels.x)
+	for original: StandardMaterial3D in wet_materials:
+		var wet: StandardMaterial3D=wet_materials[original]
+		wet.roughness=original.roughness*(1.-.46*levels.x)
+		wet.albedo_color=original.albedo_color.darkened(.13*levels.x)
 
 func update_contact_light(daylight: float) -> void:
 	if contact_material != null:

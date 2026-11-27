@@ -97,12 +97,15 @@ func run() -> void:
 	verify(copy.life.room==6 and copy.player.position.distance_to(w.player.position)<0.05 and copy.life.house.expanded,"reload expanded room")
 	verify(copy.life.house.objects[0].slots[0].id=="seed" and copy.life.house.objects[1].r==1 and copy.life.house.look[0]==1 and copy.life.house.look[2]==1,"reload storage layout and outfit")
 	check_farming(copy)
+	check_weather(copy)
 	print("Home integration failures: ",errors)
 	quit(1 if errors else 0)
 
 func check_farming(w) -> void:
 	var life=w.life
 	life.room=-1
+	life.weather.kind="sun"
+	life.weather.remaining=1800
 	var bag=life.bag
 	var cell:=Vector2i(4,20)
 	var pos:=Vector3(cell.x,.51,cell.y)
@@ -137,3 +140,41 @@ func check_farming(w) -> void:
 	life.find_target(pos)
 	life.interact()
 	verify(not life.cell_index.has(cell) and bag.slots[bag.selected].hp==29,"Restore grass and wear shovel")
+
+func check_weather(w) -> void:
+	var life=w.life
+	var forecast=life.weather
+	life.clock=0
+	life.room=6
+	forecast.kind="rain"
+	forecast.remaining=210
+	life.plots.append({"soil":true,"x":4,"z":20,"water":false,"crop":"potato","growth":0.0})
+	var i:int=life.plots.size()-1
+	life.attach_bed(i)
+	life.advance(90)
+	var crop:Dictionary=life.plots[i]
+	verify(crop.water and is_equal_approx(crop.growth,.75),"Rain irrigates exposed crops while player is indoors; 1.5x growth")
+	life.advance(90)
+	verify(is_equal_approx(crop.growth,1.5) and crop.water,"Rain through dawn")
+	forecast.kind="storm"
+	forecast.remaining=60
+	verify(forecast.spawn_multiplier(&"fish")==2.0,"Storm fish modifier")
+	life.advance(12)
+	verify(is_equal_approx(crop.growth,1.6),"Storm retains rain growth")
+	w.update_world_ui()
+	verify(not w.atmosphere.visible and not w.atmosphere.drops.emitting,"Building shelters camera")
+	life.room=-1
+	w.update_world_ui()
+	verify(w.atmosphere.visible and w.atmosphere.drops.emitting,"Outdoor rain")
+	verify(w.hud.weather_icon.texture==w.hud.WEATHER_ICONS.storm,"Weather icon")
+	w.save_game()
+	var other=preload("res://main.tscn").instantiate()
+	root.add_child(other)
+	verify(other.life.weather.kind=="storm" and is_equal_approx(other.life.weather.remaining,48),"Restore forecast and duration")
+	verify(is_equal_approx(other.life.plots[i].growth,1.6),"Restore fractional crop growth")
+	other.life.advance(49)
+	life.advance(49)
+	verify(other.life.weather.kind==forecast.kind and is_equal_approx(other.life.weather.remaining,forecast.remaining),"Restored random sequence")
+	other.free()
+	forecast.kind="wind"
+	verify(forecast.spawn_multiplier(&"butterflies")>1 and forecast.spawn_multiplier(&"insects")>1 and forecast.spawn_multiplier(&"fish")==1,"Wind insect modifiers")

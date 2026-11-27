@@ -34,12 +34,14 @@ func run() -> void:
 	var out:=OS.get_environment("EVERGROVE_PREVIEWS")
 	if not out.is_empty(): DirAccess.make_dir_recursive_absolute(out)
 	for level in 4:
+		w.life.weather.kind=["sun","rain","wind","storm"][level]
+		w.life.weather.levels=w.life.weather.LEVELS[w.life.weather.kind]
 		w.apply_graphics(level)
 		var target:=Vector3(18,0.52,-10) if level%2 else Vector3(-9,0.52,31)
 		w.player.position=target
 		w.camera.position=target+Vector3(0,10,10)
 		w.update_solar_lighting([0.23,0.14,0.08,0.43][level])
-		await process_frame
+		await create_timer(0.6).timeout
 		await RenderingServer.frame_post_draw
 		var frame:=root.get_texture().get_image()
 		check(frame!=null and not frame.is_empty(),"Rendered image at preset %d" % level)

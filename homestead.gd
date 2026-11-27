@@ -16,6 +16,8 @@ const FIELD := Vector2(3.1,4.6)
 const LABELS := {"fiber":"Colher fibras","clay":"Escavar argila","iron":"Minerar ferro","wood":"Cortar tronco","stone":"Quebrar rocha","twig":"Pegar graveto","fruit":"Pegar fruta","flower":"Colher flor"}
 const REQUIRED := {"clay":"shovel","iron":"pick","wood":"axe","stone":"pick"}
 var bag := Bag.new()
+var weather:=preload("res://weather.gd").new()
+var growth_seconds:=0.0
 var day := 1
 var clock := 0.0 # Starts at 06:00.
 var plots: Array = []
@@ -174,20 +176,53 @@ func refresh_resources() -> void:
 		resources[i].node.visible = not dormant.has(str(i))
 
 func advance(delta: float) -> bool:
-	clock += delta
-	if clock < DAY_SECONDS: return false
-	clock -= DAY_SECONDS
-	day += 1
+	var new_day:=false
+	while delta>0.000001:
+		var step:=minf(delta,minf(weather.remaining,DAY_SECONDS-clock))
+		clock+=step
+		growth_seconds+=step
+		delta-=step
+		var dawn:=clock>=DAY_SECONDS-0.000001
+		weather.elapse(step)
+		var change:=weather.remaining<=0.000001
+		if dawn or change or growth_seconds>=1.0:
+			grow_plots(dawn)
+		if dawn:
+			clock=0
+			day+=1
+			new_day=true
+			for key in dormant.keys():
+				if int(dormant[key])<=day: dormant.erase(key)
+			refresh_resources()
+		if change:
+			weather.next_period(clock/DAY_SECONDS)
+			if weather.rainy(): grow_plots(false)
+	return new_day
+
+func grow_plots(dawn: bool) -> void:
+	var wet:=weather.rainy()
+	var gain:=growth_seconds/DAY_SECONDS*(1.5 if wet else 1.0)
+	growth_seconds=0
 	for i in plots.size():
-		var plot: Dictionary = plots[i]
-		if plot.water:
-			plot.growth = mini(int(CROPS[plot.crop][1]),int(plot.growth)+1)
-			plot.water = false
+		var p: Dictionary=plots[i]
+		var old_water: bool=p.water
+		var old_stage:=floori(float(p.growth)*2)
+		if wet: p.water=true
+		if p.water and p.growth>=0:
+			var limit:=float(CROPS[p.crop][1])
+			p.growth=minf(limit,float(p.growth)+gain)
+			if dawn: p.growth=minf(limit,float(p.growth)+float(p.get("dawn_credit",0)))
+			if limit-float(p.growth)<0.000001: p.growth=limit
+		if dawn:
+			p.erase("dawn_credit")
+			p.water=wet
+		if floori(float(p.growth)*2)!=old_stage:
 			draw_bed(i)
-	for key in dormant.keys():
-		if int(dormant[key]) <= day: dormant.erase(key)
-	refresh_resources()
-	return true
+		elif old_water!=p.water:
+			var bed:=beds[i]
+			bed.get_child(0).material_override=material("75543d" if p.water else "a57c50")
+			for furrow in range(1,4):
+				bed.get_child(furrow).material_override=material("624b38" if p.water else "846140")
 
 func find_target(pos: Vector3) -> void:
 	target = -1
@@ -228,9 +263,10 @@ func prompt() -> String:
 	return "Regar" if bag.tool()=="can" else "Equipe Regador"
 
 func interact() -> String:
+	grow_plots(false)
 	if target < 0: return ""
 	if target==beds.size()+resources.size():
-		plots.append({"soil":true,"x":aimed.x,"z":aimed.y,"water":false,"crop":"turnip","growth":-1})
+		plots.append({"soil":true,"x":aimed.x,"z":aimed.y,"water":weather.rainy(),"crop":"turnip","growth":-1})
 		attach_bed(plots.size()-1)
 		bag.wear()
 		return "Terra preparada"
@@ -262,7 +298,8 @@ func interact() -> String:
 			return "Abra espaço para a colheita e as sementes"
 		settlement.count("harvest")
 		p.growth = int(CROPS[p.crop][1])-2 if p.crop in ["tomato","berry"] else -1
-		p.water = false
+		p.water = weather.rainy()
+		p.erase("dawn_credit")
 		message = "+1 "+str(Bag.NAMES[p.crop])+" · +2 sementes"
 	elif not p.soil and bag.held()=="hoe": p.soil = true
 	elif p.soil and p.growth < 0 and crop_for(bag.held())!="":
@@ -271,6 +308,7 @@ func interact() -> String:
 		p.growth = 0
 	elif p.growth >= 0 and not p.water and bag.tool()=="can":
 		p.water=true
+		p.dawn_credit=clock/DAY_SECONDS
 		bag.wear()
 	else: return message
 	draw_bed(target)
@@ -280,7 +318,8 @@ func save_progress(pos: Vector3) -> void:
 	if protect_existing:
 		save_failed=true
 		return
-	var data := {"version":4,"world_name":world_name,"profile":profile,"played":played,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	grow_plots(false)
+	var data := {"weather":weather.pack(),"version":4,"world_name":world_name,"profile":profile,"played":played,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	save_failed=not Saves.write_save(save_path,data)
 
 func load_progress() -> void:
@@ -297,13 +336,15 @@ func load_progress() -> void:
 		if not p is Dictionary or not p.has_all(["soil","water","growth"]): return
 		p.crop=p.get("crop","turnip")
 		if not CROPS.has(p.crop): return
-		p.growth=clampi(int(p.growth),-1,int(CROPS[p.crop][1]))
+		p.growth=clampf(float(p.growth),-1,float(CROPS[p.crop][1]))
+		if p.water and not data.has("weather"): p.dawn_credit=float(data.get("clock",0))/DAY_SECONDS
 	if not data.get("pos") is Array or data.pos.size()!=2: return
 	var backup:=save_path+".v"+str(int(data.version))
 	if int(data.version)<3 and not FileAccess.file_exists(backup):
 		if DirAccess.copy_absolute(save_path,backup)!=OK:
 			save_failed=true
 			return
+	weather.restore(data.get("weather",{}))
 	profile=data.get("profile",profile)
 	world_name=Saves.world_name(data)
 	played=maxf(0,float(data.get("played",0)))
