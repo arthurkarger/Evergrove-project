@@ -10,6 +10,8 @@ var batches := {}
 var grass_batches: Array[MultiMeshInstance3D] = []
 var world_materials: Array[ShaderMaterial] = []
 var scenic_material: StandardMaterial3D
+var contact_batches: Array[MultiMeshInstance3D] = []
+var contact_material: ShaderMaterial
 var foliage_batches: Array[MultiMeshInstance3D] = []
 var foliage_material: ShaderMaterial
 var surface_materials: Dictionary = {}
@@ -43,6 +45,9 @@ func _ready() -> void:
 	trunk.bottom_radius = 0.5
 	trunk.height = 1
 	meshes = {"box": BoxMesh.new(), "round": crown, "disc": disc, "pine": cone, "roof": PrismMesh.new(), "trunk": trunk, "ground": BoxMesh.new(), "water": disc, "shore": disc, "grass": grass_mesh(), "leaf": leaf_mesh(), "canopy": crown, "bark": trunk, "stone": crown, "path_box": BoxMesh.new(), "path_disc": disc, "roof_tiles": PrismMesh.new(), "wood": BoxMesh.new()}
+	var contact_plane := PlaneMesh.new()
+	contact_plane.size = Vector2.ONE
+	meshes["contact"] = contact_plane
 	build_paths()
 	build_homes()
 	build_lake()
@@ -87,8 +92,8 @@ void fragment() {
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
 	float depth = 1.0-smoothstep(0.18,1.0,shore);
-	vec3 sand = vec3(0.36,0.62,0.49);
-	vec3 deep = vec3(0.065,0.29,0.36);
+	vec3 sand = vec3(0.25,0.65,0.49);
+	vec3 deep = vec3(0.035,0.31,0.46);
 	vec3 water = mix(sand,deep,depth);
 	float crest = 0.0;
 	float nx = 0.0;
@@ -143,7 +148,7 @@ void fragment() {
 	if (quality > 0) { shade += 0.021 * fleck; }
 	if (quality > 1) { shade += 0.011 * detail + 0.009 * mottling; }
 	if (quality == 3) { shade += 0.012 * sin(p.x * 7.0 + p.y * 5.0) * cos(p.y * 8.0); }
-	ALBEDO = vec3(0.35, 0.55, 0.27) + vec3(shade, shade, shade * 0.55);
+	ALBEDO = vec3(0.27, 0.52, 0.16) + vec3(shade, shade, shade * 0.55);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -166,6 +171,7 @@ func flush_batches() -> void:
 	grain.generate_mipmaps()
 	material.albedo_texture = ImageTexture.create_from_image(grain)
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	contact_material = make_contact_material()
 	var tuft_material := grass_shader()
 	var grass_material := landscape_material(false)
 	var water_material := landscape_material(true)
@@ -194,6 +200,10 @@ func flush_batches() -> void:
 			instance.material_override = water_material
 			instance.layers = 2
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "contact":
+			instance.material_override = contact_material
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			contact_batches.append(instance)
 		elif kind == "grass":
 			instance.material_override = tuft_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -271,6 +281,7 @@ func build_homes() -> void:
 func cottage(x: float,z: float,roof: String,plaster: String) -> void:
 	house_centers.append(Vector2(x,z))
 	var center := Vector3(x,1.22,z)
+	contact_at(Vector2(x,z),Vector2(6.1,5.0),0.065)
 	piece("box",center,Vector3(4.4,2.44,3.4),plaster)
 	wall(center,Vector3(4.4,2.44,3.4))
 	piece("box",Vector3(x,0.19,z),Vector3(4.5,0.38,3.5),"988874")
@@ -307,6 +318,7 @@ func fence(a: Vector2,b: Vector2) -> void:
 	wall(Vector3(mid.x,0.5,mid.y),Vector3(0.22,1,line.length()+0.2),angle)
 
 func bench(x: float,z: float) -> void:
+	contact_at(Vector2(x,z),Vector2(2.7,1.45),0.062)
 	for dx in [-0.7,0.7]:
 		piece("box",Vector3(x+dx,0.27,z),Vector3(0.21,0.54,0.58),WOOD)
 	for j in 4:
@@ -345,6 +357,7 @@ func build_lake() -> void:
 
 func tree(x: float,z: float,s: float,kind: int) -> void:
 	var base := Vector3(x,0,z)
+	contact_at(Vector2(x,z),Vector2(2.6,2.4)*s,0.058)
 	piece("bark",base+Vector3.UP*s,Vector3(0.72,2,0.72)*s,WOOD)
 	piece("round",base+Vector3.UP*0.14*s,Vector3(0.95,0.29,0.85)*s,WOOD)
 	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
@@ -354,8 +367,8 @@ func tree(x: float,z: float,s: float,kind: int) -> void:
 			piece("pine",base+Vector3.UP*(1.9+i*0.76)*s,Vector3(w,2,w)*s,["50785c","628567","769672"][i])
 			piece("round",base+Vector3.UP*(1.15+i*0.76)*s,Vector3(w*0.86,0.48,w*0.86)*s,["50785c","628567","769672"][i])
 	else:
-		var dark := "628753" if kind == 0 else "799755"
-		var light := "87a862" if kind == 0 else "a4b86b"
+		var dark := "4c823a" if kind == 0 else "65983e"
+		var light := "8fba4e" if kind == 0 else "a9c65a"
 		piece("canopy",base+Vector3(0,2.45,0)*s,Vector3(3.3,2.7,3)*s,dark)
 		piece("canopy",base+Vector3(-0.75,2.7,0.19)*s,Vector3(2.12,1.92,2.02)*s,light)
 		piece("canopy",base+Vector3(0.72,2.78,-0.17)*s,Vector3(2.20,2.10,2.10)*s,dark)
@@ -399,6 +412,7 @@ func build_groves() -> void:
 		for j in 2:
 			var w := 1.6-j*0.65
 			var pos := Vector3(p.x+j*1.1,w*0.24,p.y+j*0.55)
+			contact_at(Vector2(pos.x,pos.z),Vector2(w*1.65,w*1.5),0.052)
 			piece("stone",pos,Vector3(w,w*0.77,w*0.9),"93988a")
 			wall(pos,Vector3(w*0.84,w*0.69,w*0.77))
 
@@ -450,7 +464,8 @@ void vertex() {
 	}
 }
 void fragment() {
-	ALBEDO = tint * mix(0.72, 1.12, clamp(height, 0.0, 1.0));
+	ALBEDO = tint * mix(0.75, 1.16, clamp(height, 0.0, 1.0));
+	AO = mix(0.64,1.0,clamp(height*1.7,0.0,1.0));
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -490,7 +505,7 @@ func plant_grass() -> void:
 			if not clear_for_grass(p): continue
 			var h := rng.randf_range(0.16,0.42)
 			var w := rng.randf_range(0.28,0.58)
-			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["668d42","7c9f50","90ad5c","73984a"][rng.randi_range(0,3)],angle)
+			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["5f9138","79ae45","9dc45a","6fa33c"][rng.randi_range(0,3)],angle)
 
 # Warm village lanterns; visuals stay on every preset, light emitters are optional.
 func build_lamps() -> void:
@@ -513,6 +528,7 @@ func build_lamps() -> void:
 func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)
 	var density := [0.0,0.25,0.55,1.0]
+	for batch in contact_batches: batch.visible = quality_level>=1
 	for batch in foliage_batches:
 		batch.multimesh.visible_instance_count = roundi(batch.multimesh.instance_count*[0.0,0.25,0.65,1.0][quality_level])
 		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level==3 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -575,6 +591,7 @@ void fragment() {
 		shade += sin(local_pos.z*19.0+abs(local_pos.x)*12.0)*0.025;
 	}
 	ALBEDO = tint*shade;
+	AO = mix(0.72,1.0,clamp(local_pos.y+0.5,0.0,1.0));
 	ROUGHNESS = 0.78;
 	SPECULAR = 0.15;
 	BACKLIGHT = tint*(quality>=2?0.09:0.0);
@@ -623,6 +640,7 @@ void fragment(){
 		shade+=n;
 	}
 	ALBEDO=tint*shade;
+	AO = quality>0 ? clamp(0.95+n*1.5,0.72,1.0) : 1.0;
 	ROUGHNESS=surface_kind==3?0.83:0.94;
 	SPECULAR=0.08;
 }
@@ -657,3 +675,28 @@ func update_water_light(sky_color: Color, day: float, phase: float) -> void:
 		if period!=probe_period:
 			probe_period=period
 			lake_probe.position.y=1.25+float(period%2)*0.002
+
+# Local soft ambient contact shadows compatible with the Mobile renderer.
+func contact_at(pos: Vector2, size: Vector2, height: float) -> void:
+	piece("contact",Vector3(pos.x,height,pos.y),Vector3(size.x,1.0,size.y),"ffffff")
+
+func make_contact_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float strength = 0.25;
+void fragment(){
+	vec2 p=(UV-0.5)*2.0;
+	float radius=length(p);
+	ALBEDO=vec3(0.10,0.13,0.075);
+	ALPHA=(1.0-smoothstep(0.22,1.0,radius))*strength;
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader=shader
+	return mat
+
+func update_contact_light(daylight: float) -> void:
+	if contact_material != null:
+		contact_material.set_shader_parameter("strength",lerpf(0.18,0.33,daylight)*(1.0 if quality_level>=2 else 0.65))
