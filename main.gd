@@ -4,6 +4,7 @@ var camera: Camera3D
 const CozyCharacter = preload("res://cozy_character.gd")
 var character: CozyCharacter
 var touch := Vector2.ZERO
+var touch_buttons: Dictionary = {}
 var elapsed := 0.0
 const Village = preload("res://village.gd")
 const GraphicsMenu = preload("res://graphics_menu.gd")
@@ -196,6 +197,7 @@ func toggle_bag(open: bool) -> void:
 	touch = Vector2.ZERO
 	pad.finger = -1
 	pad.offset = Vector2.ZERO
+	touch_buttons.clear()
 	pad.set_process_input(not open)
 	pad.visible = not open
 	pad.queue_redraw()
@@ -283,8 +285,49 @@ func use_item() -> void:
 	save_game()
 	update_world_ui()
 
+func gameplay_touch_active() -> bool:
+	return initialized and pad.visible and hud.visible and not graphics.shade.visible and not home_ui.menu.visible and not site.active and not hud.shade.visible and not village_menu.shade.visible
+
+func touch_control_at(point: Vector2) -> Button:
+	var controls: Array[Button]=[graphics.menu_button,hud.run_button,hud.action,hud.pack_button,hud.build_button,hud.craft_button]
+	controls.append_array(hud.quick)
+	for button in controls:
+		if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(point): return button
+	return null
+
+func route_game_touch(event: InputEvent) -> bool:
+	if not gameplay_touch_active(): return false
+	if event is InputEventScreenTouch:
+		if event.pressed and not event.canceled:
+			var button:=touch_control_at(event.position)
+			if button!=null:
+				touch_buttons[event.index]=button
+				return true
+			pad.route_touch(event)
+		else:
+			if touch_buttons.has(event.index):
+				var button: Button=touch_buttons[event.index]
+				touch_buttons.erase(event.index)
+				if not event.canceled and button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
+					if button.toggle_mode:
+						button.button_pressed=not button.button_pressed
+					button.pressed.emit()
+			else: pad.route_touch(event)
+		return true
+	if event is InputEventScreenDrag:
+		if not touch_buttons.has(event.index): pad.route_touch(event)
+		return true
+	return false
+
 func _input(event: InputEvent) -> void:
-	if not initialized or not event is InputEventKey or not event.pressed or event.echo: return
+	if not initialized: return
+	if route_game_touch(event):
+		get_viewport().set_input_as_handled()
+		return
+	if gameplay_touch_active() and event is InputEventMouse and event.device==-1:
+		get_viewport().set_input_as_handled()
+		return
+	if not event is InputEventKey or not event.pressed or event.echo: return
 	if graphics.shade.visible:
 		if event.keycode==KEY_ESCAPE:
 			graphics.back()
@@ -598,6 +641,7 @@ func _physics_process(delta):
 	var speed := movement_speed()
 	player.velocity = Vector3(d.x*speed,-2,d.y*speed)
 	player.move_and_slide()
+	if life.room<0: village.update_bank_ripple(player.position,d.length())
 	if life.room<0:
 		player.position.x = clampf(player.position.x,village.world_grid.bounds.position.x,village.world_grid.bounds.end.x-1)
 		player.position.z = clampf(player.position.z,village.world_grid.bounds.position.y,village.world_grid.bounds.end.y-1)

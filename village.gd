@@ -175,7 +175,23 @@ uniform sampler2D scenery : hint_screen_texture, repeat_disable, filter_linear;
 uniform sampler2D shore_map : repeat_disable, filter_linear;
 uniform vec4 sky_tint : source_color = vec4(0.55,0.72,0.82,1.0);
 uniform float daylight = 1.0;
+uniform float water_wind = 0.08;
+uniform float water_rain = 0.0;
+uniform float water_cloud = 0.0;
+uniform vec3 bank_actor = vec3(0.0,0.0,0.0);
 varying vec3 world_pos;
+float ripple_hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+vec2 rain_ring(vec2 p,float scale,float rate) {
+	vec2 cell=floor(p*scale);
+	vec2 local=fract(p*scale);
+	vec2 center=vec2(ripple_hash(cell),ripple_hash(cell+vec2(17.3,29.1)))*0.30+0.35;
+	float age=fract(TIME*rate+ripple_hash(cell+vec2(9.2,4.6)));
+	vec2 q=local-center;
+	float d=length(q);
+	float wave=(d-age*0.42)*70.0;
+	float envelope=(1.0-smoothstep(0.03,0.12,abs(d-age*0.42)))*sin(age*3.14159);
+	return q/max(d,0.015)*sin(wave)*envelope;
+}
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
@@ -185,12 +201,13 @@ void fragment() {
 	float distance_to_land = -min(banks.x,banks.y);
 	float ocean = step(banks.x,banks.y);
 	// Signed shoreline: animate the waterline on both sides of the dry coast.
-	float surge = 0.14 + 0.43 * (0.5+0.5*sin(TIME*1.65 + sin(p.x*0.19+p.y*0.13)*0.85));
+	float agitation=clamp(water_wind*0.75+water_rain*0.40,0.0,1.0);
+	float surge = 0.10 + (0.43+agitation*0.52) * (0.5+0.5*sin(TIME*(1.45+agitation*0.85) + sin(p.x*0.19+p.y*0.13)*0.85));
 	float runup = mix(0.035, surge, ocean);
 	if (distance_to_land < -runup) discard;
 	float depth = smoothstep(0.,5.0,max(0.0,distance_to_land));
 	float shore = 1.0-depth;
-	float t = TIME;
+	float t = TIME*(1.0+agitation*0.65);
 	vec2 flow = normalize(vec2(0.83,0.56));
 	float a = dot(p,flow)*2.5 - t*1.35;
 	float b = dot(p,vec2(-0.46,0.89))*4.1 - t*0.83;
@@ -198,8 +215,9 @@ void fragment() {
 	float wave_a = sin(a+0.65*sin(b*0.56));
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
-	vec3 sand = vec3(0.24,0.70,0.58);
-	vec3 deep = mix(vec3(0.045,0.33,0.36),vec3(0.025,0.26,0.42),step(banks.x,banks.y));
+	vec3 sand = mix(vec3(0.28,0.72,0.61),vec3(0.19,0.46,0.44),water_cloud*0.55);
+	vec3 deep = mix(vec3(0.035,0.35,0.39),vec3(0.022,0.25,0.43),ocean);
+	deep=mix(deep,vec3(0.10,0.20,0.25),water_cloud*0.48);
 	vec3 water = mix(sand,deep,depth);
 	float wash = distance_to_land - (0.17+0.09*sin(t*1.3+dot(p,vec2(.7,.43))));
 	float crest = (1.0-smoothstep(0.035,0.14,abs(wash))) * (0.10+0.07*wave_b);
@@ -221,6 +239,25 @@ void fragment() {
 		float foam_break = smoothstep(-0.30,0.65,sin(a*0.8+wave_b+t*0.25));
 		crest += foam*foam_break*(0.10+0.07*daylight);
 	}
+	float amplitude=mix(0.75,1.85,agitation)*mix(0.75,1.0,ocean);
+	nx*=amplitude;
+	nz*=amplitude;
+	if (quality>0 && water_rain>0.02) {
+		vec2 ripple=rain_ring(p,1.4,1.1);
+		if (quality>=2) { ripple+=rain_ring(p+vec2(0.41,0.73),2.1,1.6)*0.65; }
+		nx+=ripple.x*water_rain*0.24;
+		nz+=ripple.y*water_rain*0.24;
+		crest+=length(ripple)*water_rain*0.028;
+	}
+	if (quality>0 && bank_actor.z>0.02) {
+		vec2 q=p-bank_actor.xy;
+		float d=length(q);
+		float wake=sin(d*18.0-TIME*9.0)*exp(-d*1.5)*bank_actor.z;
+		vec2 n=q/max(d,0.02)*wake*0.22;
+		nx+=n.x;
+		nz+=n.y;
+		crest+=abs(wake)*0.022;
+	}
 	vec3 n_world = normalize(vec3(nx,1.0,nz));
 	NORMAL = normalize(mat3(VIEW_MATRIX)*n_world);
 	float fresnel = pow(1.0-clamp(dot(NORMAL,VIEW),0.0,1.0),3.0);
@@ -228,12 +265,16 @@ void fragment() {
 		// A breaking crest follows the moving contour; a thin wash remains behind it.
 	float front = distance_to_land + runup;
 	float lace = 0.72 + 0.28*sin(p.x*13.0+p.y*9.0+wave_b*2.0);
-	float breaker = (1.0-smoothstep(0.025,0.18,front))*ocean*lace;
+	float breaker = (1.0-smoothstep(0.025,0.18+agitation*0.17,front))*ocean*lace;
+	if (quality>=2) {
+		float chop=smoothstep(0.89,0.99,wave_a*0.62+wave_b*0.25+wave_c*0.13);
+		breaker+=chop*agitation*agitation*0.19*mix(0.45,1.0,ocean);
+	}
 	float backwash = (1.0-smoothstep(0.04,0.20,abs(front-0.52)))*ocean*0.22;
 	float film = ocean*(1.0-smoothstep(-0.15,0.65,distance_to_land));
 	water = mix(water,vec3(0.54,0.54,0.32),film*0.50);
 	ALBEDO = mix(water + vec3(crest*0.78,crest,crest*0.94),vec3(0.93,0.98,0.93),clamp(breaker*0.84+backwash,0.0,1.0));
-	ROUGHNESS = quality==3 ? 0.22+0.12*(1.0-wave_a)*0.5 : (quality==2?0.37:0.83);
+	ROUGHNESS = quality==3 ? 0.19+0.12*(1.0-wave_a)*0.5+agitation*0.15 : (quality==2?0.32+agitation*0.18:0.83);
 	METALLIC = 0.0;
 #ifdef CLEAR_WATER
 	vec2 bend = (mat3(VIEW_MATRIX)*vec3(nx,0.,nz)).xy * (.006+.014*depth);
@@ -935,6 +976,10 @@ void fragment(){
 func update_weather(levels: Vector3) -> void:
 	if last_weather.distance_squared_to(levels)<0.000025: return
 	last_weather=levels
+	for mat in [water_simple,water_clear]:
+		mat.set_shader_parameter("water_rain",levels.x)
+		mat.set_shader_parameter("water_wind",levels.y)
+		mat.set_shader_parameter("water_cloud",levels.z)
 	world_materials[0].set_shader_parameter("rain_wet",levels.x)
 	world_materials[0].set_shader_parameter("cloud_cover",levels.z)
 	world_materials[3].set_shader_parameter("air",levels.y)
@@ -950,3 +995,9 @@ func update_weather(levels: Vector3) -> void:
 func update_contact_light(daylight: float) -> void:
 	if contact_material != null:
 		contact_material.set_shader_parameter("strength",lerpf(0.18,0.33,daylight)*(1.0 if quality_level>=2 else 0.65))
+
+func update_bank_ripple(pos: Vector3,moving: float) -> void:
+	var point:=Vector2(pos.x,pos.z)
+	var strength:=clampf(moving,0.0,1.0)*(1.0-smoothstep(0.2,1.6,absf(shoreline.distance_at(point))))
+	for mat in [water_simple,water_clear]:
+		if mat: mat.set_shader_parameter("bank_actor",Vector3(point.x,point.y,strength))

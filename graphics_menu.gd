@@ -132,6 +132,7 @@ func open() -> void:
 	world.touch = Vector2.ZERO
 	world.pad.finger = -1
 	world.pad.offset = Vector2.ZERO
+	world.touch_buttons.clear()
 	world.pad.set_process_input(false)
 	world.pad.hide()
 	world.player.velocity = Vector3.ZERO

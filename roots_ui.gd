@@ -40,6 +40,7 @@ var held_label := Label.new()
 var build_button := Button.new()
 var craft_button := Button.new()
 var run_button := Button.new()
+var pack_button := Button.new()
 
 func panel_style(fill: String,border: String) -> StyleBoxFlat:
 	return Style.box(Color(fill),Color(border),16,10)
@@ -112,7 +113,7 @@ func build(model) -> void:
 	add_child(top)
 	top.position = Vector2(12,10)
 	top.add_theme_constant_override("separation",8)
-	var pack := Button.new()
+	var pack := pack_button
 	pack.text = "Mochila"
 	pack.custom_minimum_size=Vector2(88,42)
 	decorate(pack)
