@@ -36,15 +36,12 @@ jobs:
           cp /tmp/godot-templates/templates/android_release.apk "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
           cp /tmp/godot-templates/templates/version.txt "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
           godot --version
-      - name: Configure export and debug signing
+      - name: Configure Android export tools
         shell: bash
         run: |
-          mkdir -p "$HOME/.config/godot" "$HOME/.android" build
-          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\n' "$ANDROID_HOME" "$JAVA_HOME" "$HOME" > "$HOME/.config/godot/editor_settings-4.4.tres"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
-          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+          set -euo pipefail
+          mkdir -p "$HOME/.config/godot" build
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "$ANDROID_HOME" "$JAVA_HOME" > "$HOME/.config/godot/editor_settings-4.4.tres"
       - name: Generate Blender game models
         shell: bash
         run: |
@@ -112,12 +109,39 @@ jobs:
           godot --headless --path . --script res://tests/graphics.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-graphics.log"
           grep -Fx 'Graphics integration failures: 0' "$RUNNER_TEMP/evergrove-graphics.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-graphics.log"; then exit 1; fi
-      - name: Export APK
+      - name: Export and verify signed release APK
         shell: bash
+        env:
+          EVERGROVE_KEYSTORE_BASE64: ${{ secrets.EVERGROVE_KEYSTORE_BASE64 }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.EVERGROVE_KEYSTORE_PASSWORD }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: evergrove
         run: |
-          godot --headless --verbose --path . --export-debug Android build/evergrove.apk
+          set -euo pipefail
+          if [[ -z "$EVERGROVE_KEYSTORE_BASE64" || -z "$GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD" ]]; then
+            echo "::error::Configure EVERGROVE_KEYSTORE_BASE64 and EVERGROVE_KEYSTORE_PASSWORD in repository Actions secrets before publishing."
+            exit 1
+          fi
+          umask 077
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$RUNNER_TEMP/evergrove-release.p12"
+          trap 'rm -f "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"' EXIT
+          printf '%s' "$EVERGROVE_KEYSTORE_BASE64" | base64 --decode > "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+          unset EVERGROVE_KEYSTORE_BASE64
+          keytool -list -alias evergrove -keystore "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH" -storepass:env GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD >/dev/null
+          godot --headless --path . --export-release Android build/evergrove.apk
           test -s build/evergrove.apk
-          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify build/evergrove.apk
+          SIGNER="$ANDROID_HOME/build-tools/34.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
+          "$SIGNER" verify --print-certs build/evergrove.apk | tee "$RUNNER_TEMP/evergrove-certificate.txt"
+          grep -Fxi 'Signer #1 certificate SHA-256 digest: 6893ff2d02148e789b36c9bfc08509bd9dee2033a6c89cf00a48636e916d4587' "$RUNNER_TEMP/evergrove-certificate.txt"
+          "$AAPT" dump badging build/evergrove.apk > "$RUNNER_TEMP/evergrove-badging.txt"
+          VERSION_CODE=$(sed -n 's/^version\/code=//p' export_presets.cfg)
+          VERSION_NAME=$(sed -n 's/^version\/name="\([^"]*\)"$/\1/p' export_presets.cfg)
+          grep -F "package: name='com.evergrove.game' versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" "$RUNNER_TEMP/evergrove-badging.txt"
+          if grep -q '^application-debuggable' "$RUNNER_TEMP/evergrove-badging.txt"; then
+            echo "::error::Refusing to publish a debuggable APK."
+            exit 1
+          fi
+          "$AAPT" dump permissions build/evergrove.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Evergrove-Android

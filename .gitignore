@@ -4,3 +4,8 @@ build/
 
 assets/models/generated/
 blender-output/
+*.keystore
+*.jks
+*.p12
+*.pfx
+EVERGROVE_KEYSTORE_*.txt

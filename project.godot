@@ -1,7 +1,8 @@
 config_version=5
 [application]
 config/name="Evergrove"
-config/version="0.5.2"
+config/version="0.5.2.1"
+config/icon="res://assets/icons/evergrove.svg"
 run/main_scene="res://title.tscn"
 [display]
 window/size/viewport_width=960

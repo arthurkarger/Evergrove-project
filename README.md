@@ -1,4 +1,4 @@
-# Evergrove — 0.5.2 · Quality of Life
+# Evergrove — 0.5.2.1 · Android Hotfix
 
 Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Simulador 3D estilizado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
 
@@ -21,7 +21,14 @@ A casa de telhado azul fica ao sul da praça. Na cama, use a ação de dormir pa
 Na planta da casa ou do quintal, toque para escolher um quadrado e arraste para mover a câmera. Gire e confirme a prévia verde. Para mover ou remover, escolha “Selecionar móvel colocado” e toque no objeto. Cancelar desfaz a edição em andamento. Cada baú tem 36 espaços e precisa estar vazio para ser removido.
 
 ## Android
-Abra a aba Actions, selecione Android APK e baixe o artefato Evergrove-Android após uma compilação bem-sucedida. Extraia o ZIP e instale o APK de depuração. O protótipo ainda não foi validado em aparelho real.
+Abra a aba Actions, selecione Android APK e baixe o artefato Evergrove-Android após uma compilação bem-sucedida. Extraia o ZIP e instale o APK release assinado. O protótipo ainda precisa de validação em aparelho real.
+
+### Assinatura permanente
+- Configure os secrets de Actions `EVERGROVE_KEYSTORE_BASE64` (arquivo PKCS12 codificado em Base64) e `EVERGROVE_KEYSTORE_PASSWORD`. O alias da chave é `evergrove`. Nunca publique a chave ou senha no repositório, logs ou artefatos.
+- Preserve a chave privada e seu backup. O workflow verifica o certificado SHA-256 esperado, o identificador `com.evergrove.game`, a versão e a ausência de modo debug. Não há fallback para assinatura aleatória.
+- Aumente `version/code` em cada versão distribuída, mantendo o mesmo package e certificado. A 0.5.2.1 usa código 8.
+- As versões antigas eram assinadas com chaves debug diferentes. O Android pode exigir a desinstalação da versão antiga antes de instalar a 0.5.2.1, o que pode apagar o progresso. Faça backup se possível antes de desinstalar. As próximas versões assinadas com a mesma chave podem ser instaladas por cima.
+- O Play Protect ainda pode exibir avisos para APKs externos; não desative a proteção. A assinatura release não equivale à aprovação pela Play Store.
 
 ## Modelos 3D do Blender
 O workflow Android APK gera os GLBs em `assets/models/generated/` antes da importação do Godot. O Blender não é necessário no dispositivo. Casas da vila (sete paletas), árvores comuns, pinheiros, árvores frutíferas e bancos usam malhas importadas, agrupadas espacialmente via MultiMesh. Personagens usam malhas Blender para cabeça, tronco, membros, sapatos e cabelo, mantendo materiais personalizáveis e animação procedural existente. Colisões e salvamentos continuam independentes das malhas. Móveis construídos, interiores e outros objetos ainda usam os modelos anteriores. Sem GLBs, a versão de desenvolvimento local conserva a geometria procedural como fallback. Para gerar localmente, execute `blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets` antes da importação do Godot. O workflow separado Blender - Generate Evergrove Assets continua gerando as prévias PNG dos três modelos de demonstração.
