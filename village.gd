@@ -1,6 +1,8 @@
 extends Node3D
 
 const BlenderModels = preload("res://blender_models.gd")
+const Starter = preload("res://starter_layout.gd")
+var world_grid = Starter.new_grid()
 const LIMIT_X := 30
 const LIMIT_Z := 23
 const WOOD := "906744"
@@ -59,6 +61,7 @@ func _ready() -> void:
 	build_lake()
 	build_groves()
 	garden_details()
+	beautify_starter()
 	plant_grass()
 	build_lamps()
 	flush_batches()
@@ -285,9 +288,13 @@ func wall(pos: Vector3, size: Vector3, angle := 0.0) -> void:
 	collider.position = pos
 	collider.rotation.y = angle
 	terrain.add_child(collider)
+	if pos.y+size.y*0.5>0.1:
+		var extent := Vector2(absf(cos(angle))*size.x+absf(sin(angle))*size.z,absf(sin(angle))*size.x+absf(cos(angle))*size.z)
+		world_grid.reserve_box(Vector2(pos.x,pos.z),extent,"Construção ou obstáculo")
 
 func path_between(a: Vector2, b: Vector2, width: float) -> void:
 	path_segments.append([a,b,width])
+	world_grid.reserve_line(a,b,width,"Caminho da vila")
 	var mid := (a + b) / 2
 	var line := b - a
 	piece("path_box", Vector3(mid.x,0.014,mid.y), Vector3(width,0.02,line.length()), TRAIL, atan2(line.x,line.y))
@@ -297,6 +304,7 @@ func build_paths() -> void:
 	piece("ground", Vector3(0,-0.32,0), Vector3(120,0.64,102), "91b579")
 	wall(Vector3(0,-0.3,0), Vector3(70,0.6,56))
 	var plaza := Vector2(0,2)
+	world_grid.reserve_box(plaza,Vector2(12,9),"Praça pública")
 	piece("path_disc", Vector3(0,0.038,2), Vector3(12,0.03,9), "d7bc96")
 	# A loop links the cottages, orchard and lakeside picnic spot.
 	var loop := PackedVector2Array([plaza, Vector2(-12,3), Vector2(-22,1), Vector2(-22,12), Vector2(-12,16), Vector2(3,15), Vector2(14,9), Vector2(16,1), Vector2(9,-1), plaza])
@@ -338,6 +346,7 @@ func build_homes() -> void:
 func cottage(x: float,z: float,roof: String,plaster: String) -> void:
 	house_centers.append(Vector2(x,z))
 	var center := Vector3(x,1.22,z)
+	world_grid.reserve_box(Vector2(x,z),Vector2(5.2,4.2),"Edifício")
 	contact_at(Vector2(x,z),Vector2(6.1,5.0),0.065)
 	wall(center,Vector3(4.4,2.44,3.4))
 	if imported_model("house_"+roof,Vector3(x,0,z),Vector3(4.4/3.0,1.20,3.4/2.3)):
@@ -393,6 +402,10 @@ func bench(x: float,z: float) -> void:
 func build_lake() -> void:
 	var x := 22.0
 	var z := -7.0
+	for ix in range(15,30):
+		for iz in range(-16,3):
+			if (Vector2(ix-x,iz-z)/Vector2(6.9,8.9)).length()<=1.0:
+				world_grid.reserve_rect(Rect2i(ix,iz,1,1),"Lago e margem")
 	piece("shore",Vector3(x,0.065,z),Vector3(12.8,0.09,16.8),"c4ae83")
 	piece("water",Vector3(x,0.12,z),Vector3(12,0.06,16),"77b8b3")
 	# Match the faceted waterline, with vertical sides above the player capsule.
@@ -418,6 +431,7 @@ func build_lake() -> void:
 
 func tree(x: float,z: float,s: float,kind: int) -> void:
 	var base := Vector3(x,0,z)
+	world_grid.reserve_box(Vector2(x,z),Vector2(1.6,1.6)*s,"Árvore")
 	contact_at(Vector2(x,z),Vector2(2.6,2.4)*s,0.058)
 	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
 	var model: String = ["tree","pine","fruit_tree"][kind]
@@ -452,6 +466,7 @@ func tree(x: float,z: float,s: float,kind: int) -> void:
 				piece("round",base+offset*s,Vector3.ONE*0.31*s,"d8815d")
 
 func flowers(x: float,z: float,color: String) -> void:
+	world_grid.reserve_box(Vector2(x,z),Vector2(1.0,1.0),"Canteiro")
 	for i in 8:
 		var p := Vector3(x+cos(i*2.4)*sqrt(i)*0.28,0,z+sin(i*2.4)*sqrt(i)*0.21)
 		piece("round",p+Vector3.UP*0.14,Vector3(0.31,0.28,0.25),"658b59")
@@ -484,11 +499,34 @@ func build_groves() -> void:
 # Small landscaping accents outside paths and doors; purely decorative.
 func garden_details() -> void:
 	for p in [Vector2(-18,-13),Vector2(-7,-17),Vector2(6,11),Vector2(19,17),Vector2(-26,-13),Vector2(-17,19),Vector2(26,4)]:
+		world_grid.reserve_box(p+Vector2(0.56,0),Vector2(1.8,0.9),"Arbustos")
 		for j in 3:
 			var center := Vector3(p.x+j*0.56,0.27,p.y+sin(j*1.8)*0.34)
 			piece("round",center,Vector3(0.77,0.62,0.72),["719954","83a862","658b4f"][j])
 			if j==1:
 				piece("round",center+Vector3(0.04,0.26,0.18),Vector3(0.18,0.13,0.18),"edb4a0")
+
+# Starter-only scenery. Keep collision and cell reservations together.
+func beautify_starter() -> void:
+	# Floral plaza edging leaves the central route and arrival point clear.
+	for p in [Vector2(-5,-1),Vector2(5,-1),Vector2(-5,5),Vector2(5,5)]:
+		piece("disc",Vector3(p.x,0.09,p.y),Vector3(1.6,0.14,1.2),"bda98a")
+		flowers(p.x,p.y,"f5df9a")
+	# Wooden storefront planters, with door and route left untouched.
+	for x in [-5.0,-1.0]:
+		piece("wood",Vector3(x,0.17,12.15),Vector3(0.86,0.34,0.55),"a77d52")
+		for j in 3:
+			piece("round",Vector3(x+(j-1)*0.23,0.43,12.15),Vector3(0.30,0.32,0.30),"6d9f55")
+			piece("round",Vector3(x+(j-1)*0.23,0.59,12.15),Vector3(0.18,0.13,0.18),"f1c981")
+		world_grid.reserve_box(Vector2(x,12.15),Vector2(0.9,0.6),"Vasos da loja")
+	# Lakeside planting islands; avoid the main walk and the water itself.
+	for p in [Vector2(15,-10),Vector2(15,-12),Vector2(19,3),Vector2(23,3)]:
+		if world_grid.reason(Rect2i(world_grid.world_to_cell(p),Vector2i.ONE))=="":
+			flowers(p.x,p.y,"eac0a1")
+	# Residential garden borders and orchard flower patches.
+	for p in [Vector2(-18,-5),Vector2(-16,-5),Vector2(6,-4),Vector2(8,-4),Vector2(-21,7),Vector2(-23,13)]:
+		if world_grid.reason(Rect2i(world_grid.world_to_cell(p),Vector2i.ONE))=="":
+			flowers(p.x,p.y,"d2d6a2")
 
 # Five curved, tapered blades per tuft, shared across all the patches.
 func grass_mesh() -> ArrayMesh:
@@ -576,6 +614,7 @@ func plant_grass() -> void:
 func build_lamps() -> void:
 	for p in [Vector2(-5,3),Vector2(5,3),Vector2(-11,1),Vector2(-22,3),Vector2(-21,12),Vector2(14,7),Vector2(12,-1),Vector2(1,-8)]:
 		var base := Vector3(p.x,0,p.y)
+		world_grid.reserve_box(p,Vector2(0.5,0.5),"Poste")
 		piece("trunk",base+Vector3.UP*0.85,Vector3(0.16,1.70,0.16),"534a41")
 		piece("disc",base+Vector3.UP*0.10,Vector3(0.39,0.20,0.39),"534a41")
 		piece("lantern_glass",base+Vector3.UP*1.77,Vector3(0.29,0.33,0.29),"e4bf79")

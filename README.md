@@ -1,4 +1,4 @@
-# Evergrove — 0.5.2.1 · Android Hotfix
+# Evergrove — 0.5.3 · Grid & World Beautification
 
 Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Simulador 3D estilizado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
 
@@ -38,3 +38,6 @@ Diálogos dos moradores aparecem na parte inferior, com texto progressivo, som s
 
 ## Pipeline artístico — preparação 0.5.3
 Veja [pipeline de arte](docs/art-pipeline.md) e [plano visual da vila](docs/evergrove-0.5.3-art-direction.md). Ícones PNG aprovados e textura opcional de grama são carregados automaticamente, com fallback para a arte atual. A geração externa é opcional e não ocorre no APK ou na CI.
+
+## Mundo 0.5.3
+A vila inicial agora possui uma grade global de ocupação e construção externa. A grade independente de cena aceita outros limites, ID e seed; `starter_layout.gd` fornece o mapa inicial. Colisões, lago, caminhos, recursos, portas e rotas NPC reservam células. O save mantém móveis existentes e registra ID/seed do mapa. A geração procedural e a escolha de mapas ainda não estão implementadas; renderização, rotas e recursos atuais continuam vinculados à vila inicial. A grade e o contrato de ocupação permitem migrar esses dados em etapas futuras. Novos itens: canteiro, arbusto, poste e fonte. O preview mostra a área completa, motivo de bloqueio e dimensões. A arte do fal depende de créditos e continua opcional. A 0.5.3 utiliza versionCode 9 e a mesma assinatura Android.

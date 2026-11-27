@@ -22,14 +22,16 @@ def material(name, rgb, seed):
     mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     bsdf.inputs["Roughness"].default_value = 0.95
-    img = bpy.data.images.new(name + "_pixels", width=64, height=64, alpha=False)
+    img = bpy.data.images.new(name + "_pixels", width=128, height=128, alpha=False)
     pixels = []
-    for y in range(64):
-        for x in range(64):
+    for y in range(128):
+        for x in range(128):
             shade = 0.96 + 0.06*rng.random() + 0.025*math.sin(x*.25+y*.14)
             if name in ("Wood", "Roof"):
                 shade += .025*math.sin(x*1.7+math.sin(y*.15))
-                if y % 16 < 2: shade *= .88
+                if y % 32 < 3: shade *= .88
+            if name.startswith("Leaf"):
+                shade += .035*math.sin(x*.31)*math.sin(y*.26)+.025*math.cos((x+y)*.53)
             pixels.extend([min(1, c*shade) for c in rgb] + [1])
     img.pixels = pixels
     img.pack()
@@ -129,7 +131,8 @@ def tree(fruit=False):
     if fruit:
         apple=material("Apple",(.72,.22,.08),14)
         for loc in [(-.72,-.57,1.7),(.58,-.52,1.8),(.82,.18,1.86)]:
-            rock("Fruit",loc,(.12,.12,.13),apple)
+            rock("Fruit",loc,(.15,.15,.16),apple)
+            cone("Fruit stem",(loc[0],loc[1],loc[2]+.15),.018,.013,.075,bark,vertices=8)
 
 def pine():
     bark=material("Wood",(.35,.19,.09),16)
@@ -180,6 +183,9 @@ def bench():
         box("Seat slat",(0,y,.51),(1.72,.135,.10),wood)
     for z in (.79,1.01):
         box("Back slat",(0,.25,z),(1.72,.10,.18),wood)
+    for x in (-.79,.79):
+        box("Armrest",(x,0,.76),(.13,.56,.12),dark)
+        box("Arm support",(x,-.19,.62),(.10,.10,.26),dark)
 
 def export(name):
     meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]

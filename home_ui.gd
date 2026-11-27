@@ -1,5 +1,6 @@
 extends CanvasLayer
 const Style = preload("res://ui_style.gd")
+const Grid = preload("res://world_grid.gd")
 
 var world
 var site
@@ -119,7 +120,7 @@ func draw() -> void:
 			title.text="Lar · %d folhas" % world.life.social.coins
 			note.text="Sua casa de telhado azul fica ao sul da praça."
 			link("Oficina","craft")
-			if room in [-1,6]: link("Planta da casa" if room==6 else "Planta do quintal","catalog")
+			if room in [-1,6]: link("Planta da casa" if room==6 else "Construir na vila","catalog")
 			link("Aparência","look")
 			if room==6 and not house.expanded:
 				button(options,"Ampliar a casa · 70 folhas",expand_room)
@@ -127,6 +128,7 @@ func draw() -> void:
 			title.text="Objetos disponíveis" if page=="catalog" else "Oficina"
 			if page=="catalog": button(options,"Selecionar móvel colocado",build.bind(""))
 			for id in house.NAMES:
+				if page=="catalog" and room!=-1 and id in ["flower","shrub","lamp","fountain"]: continue
 				var line: String=house.NAMES[id]+"  ×"+str(int(house.stock.get(id,0)))
 				if page=="catalog":
 					button(options,line,build.bind(id)).disabled=int(house.stock.get(id,0))==0
@@ -208,6 +210,10 @@ func build(id: String) -> void:
 
 func status() -> void:
 	hint.text="Toque em um móvel para editar · arraste para mover a câmera" if site.kind=="" else str(world.life.house.NAMES[site.kind])+" · escolha um quadrado"
+	if site.kind!="":
+		var footprint: Vector2i=world.life.house.size_of(site.kind,site.turns)
+		hint.text+=" · %d × %d" % [footprint.x,footprint.y]
+		if not site.valid: hint.text+=" · "+site.failure_reason
 	rotate.disabled=site.kind==""
 	accept.disabled=not site.valid
 	remove.disabled=site.index<0
@@ -251,7 +257,7 @@ func pointer(id: int,p: Vector2,down: bool) -> void:
 	elif finger==id:
 		if not dragged:
 			var local: Vector3=site.ray(p)-site.base(world.life.room)
-			site.pick(Vector2i(roundi(local.x),roundi(local.z)))
+			site.pick(Grid.world_to_cell(Vector2(local.x,local.z)))
 			status()
 		finger=-2
 

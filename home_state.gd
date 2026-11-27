@@ -1,16 +1,19 @@
 extends RefCounted
 
 const Bag = preload("res://backpack.gd")
+const Grid = preload("res://world_grid.gd")
+const Starter = preload("res://starter_layout.gd")
+var world_grid = Starter.new_grid()
 const DOOR := Vector2(-7,21.65)
-const NAMES := {"path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão"}
-const RECIPES := {"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2}}
+const NAMES := {"path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão","flower":"Canteiro","shrub":"Arbusto","lamp":"Poste","fountain":"Fonte"}
+const RECIPES := {"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2},"flower":{"flower":2},"shrub":{"twig":3,"flower":1},"lamp":{"wood":2,"stone":2},"fountain":{"stone":6,"wood":1}}
 var stock := {"bench":1,"chest":1,"path":3}
 var objects: Array = []
 var expanded := false
 var look := [0,0,0,0]
 
 func pack() -> Dictionary:
-	return {"stock":stock,"objects":objects,"expanded":expanded,"look":look}
+	return {"stock":stock,"objects":objects,"expanded":expanded,"look":look,"grid_schema":2}
 
 func restore(d: Dictionary) -> void:
 	stock=d.get("stock",stock)
@@ -20,13 +23,11 @@ func restore(d: Dictionary) -> void:
 
 func area(room: int) -> Rect2i:
 	if room==6: return Rect2i(-1,-2,9 if expanded else 5,4)
-	if room==-1: return Rect2i(-4,17,9,5)
+	if room==-1: return world_grid.bounds
 	return Rect2i()
 
 func size_of(id: String,r: int) -> Vector2i:
-	if id=="arch": return Vector2i(2,2)
-	if id in ["bench","fence"]: return Vector2i(2,1) if r%2==0 else Vector2i(1,2)
-	return Vector2i.ONE
+	return Grid.footprint(id,r)
 
 func rect(obj: Dictionary) -> Rect2i:
 	return Rect2i(Vector2i(int(obj.x),int(obj.z)),size_of(obj.id,int(obj.r)))
@@ -36,14 +37,21 @@ func at(room: int,cell: Vector2i) -> int:
 		if objects[i].room==room and rect(objects[i]).has_point(cell): return i
 	return -1
 
-func valid(room: int,id: String,cell: Vector2i,r: int,skip: int,player: Vector2) -> bool:
-	if not NAMES.has(id): return false
+func placement_reason(room: int,id: String,cell: Vector2i,r: int,skip: int,player: Vector2) -> String:
+	if not NAMES.has(id): return "Objeto desconhecido"
 	var box := Rect2i(cell,size_of(id,r))
-	if not area(room).encloses(box): return false
-	if id!="path" and Rect2(Vector2(cell)-Vector2.ONE*0.78,Vector2(box.size)+Vector2.ONE*0.56).has_point(player): return false
+	if not area(room).encloses(box): return "Fora da área"
+	if room!=-1 and id in ["flower","shrub","lamp","fountain"]: return "Somente ao ar livre"
+	if room==-1:
+		var obstacle: String=world_grid.reason(box)
+		if obstacle!="": return obstacle
+	if id!="path" and Rect2(Vector2(cell)-Vector2.ONE*0.78,Vector2(box.size)+Vector2.ONE*0.56).has_point(player): return "Jogador na área"
 	for i in objects.size():
-		if i!=skip and objects[i].room==room and rect(objects[i]).intersects(box): return false
-	return true
+		if i!=skip and objects[i].room==room and rect(objects[i]).intersects(box): return "Espaço ocupado"
+	return ""
+
+func valid(room: int,id: String,cell: Vector2i,r: int,skip: int,player: Vector2) -> bool:
+	return placement_reason(room,id,cell,r,skip,player)==""
 
 func place(room: int,id: String,cell: Vector2i,r: int,index: int,player: Vector2) -> bool:
 	if not valid(room,id,cell,r,index,player): return false

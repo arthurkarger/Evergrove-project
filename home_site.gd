@@ -16,6 +16,10 @@ var index := -1
 var kind := ""
 var turns := 0
 var valid := false
+var failure_reason := ""
+var footprint_mesh := MeshInstance3D.new()
+var footprint_material := StandardMaterial3D.new()
+const Grid = preload("res://world_grid.gd")
 
 func setup(game) -> void:
 	world=game
@@ -43,6 +47,13 @@ void fragment(){
 	grid.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(grid)
 	grid.hide()
+	footprint_material.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
+	footprint_material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
+	footprint_mesh.mesh=PlaneMesh.new()
+	footprint_mesh.material_override=footprint_material
+	footprint_mesh.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(footprint_mesh)
+	footprint_mesh.hide()
 	ghost_mat.transparency=BaseMaterial3D.TRANSPARENCY_ALPHA
 	ghost_mat.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
 
@@ -85,6 +96,8 @@ func model(id: String,preview: bool) -> Node3D:
 		"fence":
 			for x in [-0.84,0.84]: t.furnish(node,Vector3(x,0.5,0),Vector3(0.2,1,0.2),"93704d")
 			for y in [0.35,0.72]: t.furnish(node,Vector3(0,y,0),Vector3(1.88,0.16,0.14),"b79469",not preview)
+		"flower","shrub","lamp","fountain":
+			garden_model(node,id,preview)
 		"arch":
 			for x in [-0.78,0.78]:
 				for z in [-0.78,0.78]: t.furnish(node,Vector3(x,0.95,z),Vector3(0.17,1.9,0.17),"957553",not preview)
@@ -92,13 +105,63 @@ func model(id: String,preview: bool) -> Node3D:
 			for z in [-0.83,-0.28,0.28,0.83]: t.furnish(node,Vector3(0,2.07,z),Vector3(1.97,0.12,0.2),"aaad80")
 	if preview:
 		for m in node.get_children():
-			m.material_override=ghost_mat
-			m.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if m is MeshInstance3D:
+				m.material_override=ghost_mat
+				m.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return node
 
+func rounded(parent: Node3D,p: Vector3,s: Vector3,tint: String,cylinder := false) -> void:
+	var m := MeshInstance3D.new()
+	if cylinder:
+		var shape := CylinderMesh.new()
+		shape.radial_segments=24
+		m.mesh=shape
+	else:
+		var shape := SphereMesh.new()
+		shape.radial_segments=12
+		shape.rings=6
+		m.mesh=shape
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color=Color(tint)
+	mat.roughness=0.9
+	m.material_override=mat
+	m.position=p
+	m.scale=s
+	parent.add_child(m)
+
+func garden_model(node: Node3D,id: String,preview: bool) -> void:
+	var t=world.town
+	match id:
+		"flower":
+			rounded(node,Vector3(0,0.12,0),Vector3(0.83,0.24,0.83),"a88963",true)
+			for i in 5:
+				var a := i*TAU/5
+				var p := Vector3(cos(a)*0.25,0.32,sin(a)*0.25)
+				rounded(node,p,Vector3(0.25,0.38,0.25),"69984f")
+				rounded(node,p+Vector3.UP*0.15,Vector3(0.23,0.16,0.23),["f6cf75","eaa3a0","f9e6bb"][i%3])
+		"shrub":
+			for p in [Vector3(-0.19,0.34,0),Vector3(0.19,0.35,0),Vector3(0,0.51,0)]:
+				rounded(node,p,Vector3(0.63,0.68,0.62),"67964c" if p.y<0.5 else "91b95c")
+			if not preview: t.furnish(node,Vector3(0,0.24,0),Vector3(0.62,0.48,0.62),"67964c",true)
+		"lamp":
+			rounded(node,Vector3.UP*0.1,Vector3(0.38,0.2,0.38),"454d44",true)
+			t.furnish(node,Vector3.UP*0.85,Vector3(0.13,1.65,0.13),"454d44",not preview)
+			t.furnish(node,Vector3.UP*1.77,Vector3(0.35,0.34,0.35),"ffe0a1")
+			rounded(node,Vector3.UP*2,Vector3(0.47,0.17,0.47),"454d44",true)
+		"fountain":
+			rounded(node,Vector3.UP*0.19,Vector3(2.8,0.38,2.8),"bcb39d",true)
+			rounded(node,Vector3.UP*0.40,Vector3(2.43,0.08,2.43),"6eb5c4",true)
+			rounded(node,Vector3.UP*0.70,Vector3(0.42,0.69,0.42),"e6d8bd",true)
+			rounded(node,Vector3.UP*1.03,Vector3(1.15,0.19,1.15),"e6d8bd",true)
+			rounded(node,Vector3.UP*1.16,Vector3(0.96,0.08,0.96),"8acdd4",true)
+			for i in 8:
+				var a := i*TAU/8
+				rounded(node,Vector3(cos(a)*0.8,0.62,sin(a)*0.8),Vector3(0.08,0.35,0.08),"bde9ec")
+			if not preview: t.furnish(node,Vector3.UP*0.22,Vector3(2.5,0.44,2.5),"bcb39d",true)
+
 func locate(node: Node3D,room: int,tile: Vector2i,id: String,r: int) -> void:
-	var offset := (Vector2(state.size_of(id,r))-Vector2.ONE)*0.5
-	node.position=base(room)+Vector3(tile.x+offset.x,0.06,tile.y+offset.y)
+	var center := Grid.cell_center(tile,state.size_of(id,r))
+	node.position=base(room)+Vector3(center.x,0.06,center.y)
 	node.rotation.y=r*PI/2
 
 func refresh() -> void:
@@ -111,7 +174,7 @@ func refresh() -> void:
 func begin(id: String) -> void:
 	active=true
 	var area: Rect2i=state.area(world.life.room)
-	cell=area.position+area.size/2
+	cell=Grid.world_to_cell(player_flat()) if world.life.room==-1 else area.position+area.size/2
 	pan=base(world.life.room)+Vector3(cell.x,0,cell.y)
 	var plane := PlaneMesh.new()
 	plane.size=Vector2(area.size)
@@ -144,11 +207,23 @@ func player_flat() -> Vector2:
 
 func update_preview() -> void:
 	valid=false
+	failure_reason=""
+	footprint_mesh.hide()
 	if ghost==null: return
-	valid=state.valid(world.life.room,kind,cell,turns,index,player_flat()) and (index>=0 or int(state.stock.get(kind,0))>0)
+	failure_reason=state.placement_reason(world.life.room,kind,cell,turns,index,player_flat())
+	if failure_reason=="" and index<0 and int(state.stock.get(kind,0))<=0:
+		failure_reason="Sem estoque"
+	valid=failure_reason==""
 	ghost_mat.albedo_color=Color(0.22,0.99,0.43,0.66) if valid else Color(1,0.16,0.18,0.7)
 	locate(ghost,world.life.room,cell,kind,turns)
 	ghost.position.y+=0.19
+	var size: Vector2i=state.size_of(kind,turns)
+	var center := Grid.cell_center(cell,size)
+	var plane := footprint_mesh.mesh as PlaneMesh
+	plane.size=Vector2(size)-Vector2.ONE*0.035
+	footprint_mesh.position=base(world.life.room)+Vector3(center.x,0.20,center.y)
+	footprint_material.albedo_color=Color(0.27,0.9,0.36,0.62) if valid else Color(0.94,0.16,0.18,0.65)
+	footprint_mesh.show()
 
 func pick(tile: Vector2i) -> void:
 	cell=tile

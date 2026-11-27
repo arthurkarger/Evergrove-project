@@ -200,7 +200,7 @@ func interact() -> String:
 	return message
 
 func save_progress(pos: Vector3) -> void:
-	var data := {"version":1,"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	var data := {"version":1,"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	var f := FileAccess.open(SAVE+".tmp",FileAccess.WRITE)
 	save_failed = true
 	if f == null: return

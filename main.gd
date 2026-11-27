@@ -113,6 +113,7 @@ func _ready():
 	hud.bag_toggled.connect(toggle_bag)
 	hud.moved.connect(move_item)
 	add_child(town)
+	configure_world_grid()
 	add_child(site)
 	site.setup(self)
 	add_child(home_ui)
@@ -134,6 +135,23 @@ func _ready():
 	update_world_ui()
 	if not FileAccess.file_exists(life.SAVE):
 		hud.show_note("Horta a leste · equipe a enxada")
+
+func configure_world_grid() -> void:
+	var grid=village.world_grid
+	# Resources, entrances and NPC travel graph share the same occupancy contract.
+	for bed in life.beds:
+		grid.reserve_box(Vector2(bed.position.x,bed.position.z),Vector2(1.15,1.15),"Horta")
+	for resource in life.resources:
+		var p: Vector3=resource.node.position
+		grid.reserve_box(Vector2(p.x,p.z),Vector2(0.9,0.9),"Recurso")
+	for i in 7:
+		var p := door(i)
+		grid.reserve_box(p+Vector2(0,0.35),Vector2(1.9,1.8),"Entrada")
+	for id in town.graph.get_point_ids():
+		for neighbor in town.graph.get_point_connections(id):
+			if neighbor>id:
+				grid.reserve_line(town.graph.get_point_position(id),town.graph.get_point_position(neighbor),1.2,"Rota de moradores")
+	life.house.world_grid=grid
 
 func select_slot(slot: int) -> void:
 	life.bag.selected = slot
