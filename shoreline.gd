@@ -8,6 +8,7 @@ var side: float
 var lake: Vector2
 var radii: Vector2
 var legacy_channel := false
+var bridge := Rect2()
 
 func _init(layout: int, world_seed: int) -> void:
 	variant=layout
@@ -19,7 +20,7 @@ func _init(layout: int, world_seed: int) -> void:
 func coast(p: Vector2) -> float:
 	var a:=atan2(p.y/31.5,p.x/38.5)
 	var norm:=pow(pow(absf(p.x/38.5),4)+pow(absf(p.y/31.5),4),0.25)
-	return (1.0-norm)*34 + 1.35*sin(3*a+phase)+0.85*sin(5*a-phase)+0.45*cos(8*a+phase)
+	return (1.0-norm)*34 + 1.35*sin(3*a+phase)+0.85*sin(5*a-phase)+0.45*cos(8*a+phase) + (0.0 if variant<0 or legacy_channel else 1.15*sin(2*a+variant)*cos(3*a-phase))
 
 # Each natural map has a continuous inlet from the ocean, through its lake,
 # and a short rounded upstream arm. The southern land corridor remains open.
@@ -95,6 +96,7 @@ func add_boundary(v) -> void:
 					var db:=distance_at(b)
 					if (da<0)!=(db<0): hits.append(a.lerp(b,da/(da-db)))
 				if hits.size()!=2 or hits[0].distance_squared_to(hits[1])<0.000001: continue
+				if bridge.has_area() and bridge.has_point((hits[0]+hits[1])*.5): continue
 				var a:=Vector3(hits[0].x,-0.25,hits[0].y)
 				var b:=Vector3(hits[1].x,-0.25,hits[1].y)
 				var up:=Vector3.UP*1.8
