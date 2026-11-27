@@ -46,6 +46,14 @@ jobs:
         run: |
           godot --headless --path . --quit-after 10 2>&1 | tee "$RUNNER_TEMP/evergrove-startup.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-startup.log"; then exit 1; fi
+      - name: Verify Village Life interactions and save migration
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-test-profile
+        run: |
+          godot --headless --path . --script res://tests/village_life.gd 2>&1 | tee "$RUNNER_TEMP/village-life-test.log"
+          grep -Fx 'Village Life integration failures: 0' "$RUNNER_TEMP/village-life-test.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/village-life-test.log"; then exit 1; fi
       - name: Export APK
         shell: bash
         run: |

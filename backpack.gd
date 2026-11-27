@@ -58,3 +58,20 @@ func move_slot(a: int,b: int) -> void:
 		var old = slots[b]
 		slots[b] = slots[a]
 		slots[a] = old
+
+func quantity(id: String) -> int:
+	var total := 0
+	for item in slots:
+		if item != null and item.id == id: total += int(item.n)
+	return total
+
+func remove_items(id: String, amount: int) -> bool:
+	if quantity(id) < amount: return false
+	for i in range(SIZE-1,-1,-1):
+		if slots[i] == null or slots[i].id != id: continue
+		var take := mini(amount,int(slots[i].n))
+		slots[i].n -= take
+		amount -= take
+		if slots[i].n == 0: slots[i] = null
+		if amount == 0: break
+	return true

@@ -14,6 +14,10 @@ var sun := DirectionalLight3D.new()
 var sky := Environment.new()
 var autosave := 0.0
 var ui_elapsed := 0.0
+var town := preload("res://neighbors.gd").new()
+var village_menu := preload("res://village_menu.gd").new()
+var focus_kind := ""
+var focus_index := -1
 var initialized := false
 
 func make_sprite(step: int) -> ImageTexture:
@@ -82,6 +86,15 @@ func _ready():
 	hud.use_requested.connect(use_item)
 	hud.bag_toggled.connect(toggle_bag)
 	hud.moved.connect(move_item)
+	add_child(town)
+	add_child(village_menu)
+	village_menu.build(self)
+	village_menu.closed.connect(close_social)
+	village_menu.changed.connect(social_changed)
+	if life.room>=0:
+		player.position = town.origin(life.room)+Vector3(life.room_pos.x,0.51,life.room_pos.y)
+		camera.position = player.position+Vector3(0,10,10)
+	town.step(0,game_hour(),life.room)
 	initialized = true
 	update_world_ui()
 	if not FileAccess.file_exists(life.SAVE):
@@ -109,8 +122,45 @@ func toggle_bag(open: bool) -> void:
 		save_game()
 		update_world_ui()
 
+func game_hour() -> int:
+	return posmod(6+floori(life.clock/life.DAY_SECONDS*24),24)
+
+func social_changed() -> void:
+	hud.refresh()
+	save_game()
+	update_world_ui()
+
+func close_social() -> void:
+	hud.visible = true
+	toggle_bag(false)
+
+func interact_focus() -> void:
+	match focus_kind:
+		"person","shop":
+			toggle_bag(true)
+			hud.visible = false
+			if focus_kind=="shop": village_menu.open_shop()
+			else: village_menu.open_person(focus_index,game_hour())
+		"door","exit":
+			if life.room<0:
+				life.room = focus_index
+				player.position = town.origin(life.room)+Vector3(0,0.52,2.25)
+			else:
+				player.position = town.outdoor(town.DOORS[life.room])+Vector3(0,0.52,0.55)
+				life.room = -1
+			player.velocity = Vector3.ZERO
+			camera.position = player.position+Vector3(0,10,10)
+			town.step(0,game_hour(),life.room)
+			update_world_ui()
+			save_game()
+
 func use_item() -> void:
-	if hud.shade.visible: return
+	if hud.shade.visible or village_menu.shade.visible: return
+	update_world_ui()
+	if focus_kind!="":
+		interact_focus()
+		return
+	if life.room>=0: return
 	life.find_target(player.position)
 	if life.target < 0: return
 	var message := life.interact()
@@ -121,6 +171,11 @@ func use_item() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not initialized or not event is InputEventKey or not event.pressed or event.echo: return
+	if village_menu.shade.visible:
+		if event.keycode in [KEY_ESCAPE,KEY_E,KEY_I]:
+			village_menu.close()
+			get_viewport().set_input_as_handled()
+		return
 	match event.keycode:
 		KEY_I, KEY_TAB: hud.toggle()
 		KEY_ESCAPE:
@@ -137,10 +192,47 @@ func update_world_ui() -> void:
 	life.find_target(player.position)
 	hud.action.text = life.prompt()
 	hud.action.disabled = life.target < 0
+	focus_kind = ""
+	focus_index = -1
+	var best := 1.85
+	if life.room>=0:
+		hud.action.text = "Interagir"
+		hud.action.disabled = true
+		life.marker.hide()
+		var local := player.position-town.origin(life.room)
+		if Vector2(local.x,local.z-2.8).length()<1.45:
+			focus_kind = "exit"
+			hud.action.text = "Sair"
+			best = Vector2(local.x,local.z-2.8).length()
+		if life.room==5 and absf(local.x)<2.6 and local.z<0.65:
+			focus_kind = "shop"
+			hud.action.text = "Abrir armazém"
+	else:
+		if life.target>=0:
+			best = Vector2(player.position.x-life.marker.position.x,player.position.z-life.marker.position.z).length()
+		for i in town.DOORS.size():
+			var distance := Vector2(player.position.x,player.position.z).distance_to(town.DOORS[i])
+			if distance<best:
+				best = distance
+				focus_index = i
+				focus_kind = "door"
+				hud.action.text = "Armazém" if i==5 else "Casa de "+str(life.social.PEOPLE[i][0])
+	for i in town.actors.size():
+		var actor := town.actors[i]
+		if not actor.visible: continue
+		var distance := Vector2(actor.position.x-player.position.x,actor.position.z-player.position.z).length()
+		if distance<best:
+			best = distance
+			focus_kind = "person"
+			focus_index = i
+			hud.action.text = "Falar · "+str(life.social.PEOPLE[i][0])
+	if focus_kind!="":
+		hud.action.disabled = false
+		life.marker.hide()
 	var phase := life.clock / life.DAY_SECONDS
 	var hours := posmod(6+floori(phase*24),24)
 	var minutes := floori(fmod(phase*24,1.0)*6)*10
-	hud.clock_label.text = "Dia %d  ·  %02d:%02d  ·  v%s" % [life.day,hours,minutes,ProjectSettings.get_setting("application/config/version")]
+	hud.clock_label.text = "Dia %d  ·  %02d:%02d  ·  %d F  ·  v%s" % [life.day,hours,minutes,life.social.coins,ProjectSettings.get_setting("application/config/version")]
 	var light := smoothstep(-0.36,0.38,sin(phase*TAU))
 	sun.light_energy = lerpf(0.12,1.0,light)
 	sky.ambient_light_energy = lerpf(0.48,0.7,light)
@@ -149,7 +241,11 @@ func update_world_ui() -> void:
 
 func save_game() -> void:
 	if initialized:
-		life.save_progress(player.position)
+		if life.room<0: life.save_progress(player.position)
+		else:
+			var local := player.position-town.origin(life.room)
+			life.room_pos = Vector2(local.x,local.z)
+			life.save_progress(town.outdoor(town.DOORS[life.room]))
 		if life.save_failed: hud.show_note("Falha ao salvar o progresso")
 
 func _notification(what: int) -> void:
@@ -160,8 +256,9 @@ func _exit_tree() -> void:
 	save_game()
 
 func _physics_process(delta):
-	if hud.shade.visible: return
+	if hud.shade.visible or village_menu.shade.visible: return
 	var new_day := life.advance(delta)
+	town.step(delta,game_hour(),life.room)
 	autosave += delta
 	if new_day or autosave >= 5.0:
 		save_game()
@@ -179,8 +276,13 @@ func _physics_process(delta):
 	d = (d+touch).limit_length()
 	player.velocity = Vector3(d.x*4.0,-2,d.y*4.0)
 	player.move_and_slide()
-	player.position.x = clampf(player.position.x,-Village.LIMIT_X,Village.LIMIT_X)
-	player.position.z = clampf(player.position.z,-Village.LIMIT_Z,Village.LIMIT_Z)
+	if life.room<0:
+		player.position.x = clampf(player.position.x,-Village.LIMIT_X,Village.LIMIT_X)
+		player.position.z = clampf(player.position.z,-Village.LIMIT_Z,Village.LIMIT_Z)
+	else:
+		var center := town.origin(life.room)
+		player.position.x = clampf(player.position.x,center.x-3.6,center.x+3.6)
+		player.position.z = clampf(player.position.z,-2.7,2.7)
 	elapsed += delta
 	sprite.texture = textures[int(elapsed*9)%2] if d.length()>0.1 else textures[0]
 	if abs(d.x)>0.1: sprite.flip_h = d.x<0
