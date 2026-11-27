@@ -37,10 +37,7 @@ var focus_index := -1
 var initialized := false
 
 func update_look() -> void:
-	var look: Array = life.house.look
-	var hair := Color(["674637","ad804d","393236","ad624c"][int(look[1])])
-	var fabric := Color(["517b91","6e8964","91596b","b29554","49778c","b46454"][int(look[3])])
-	character.configure(hair,fabric,Color("f2c39b"),int(look[0]),int(look[2]),-0.51)
+	character.configure_player(life.house.look,life.profile,-0.51)
 
 func door(i: int) -> Vector2:
 	if i==life.room and life.lot_exit.size()>=3: return Vector2(life.lot_exit[0],life.lot_exit[1])
@@ -561,6 +558,7 @@ func _physics_process(delta):
 		if site.active: return
 	if home_ui.menu.visible: return
 	if hud.shade.visible or village_menu.shade.visible: return
+	life.played+=delta
 	var new_day := life.advance(delta)
 	town.step(delta,game_hour(),life.room)
 	autosave += delta

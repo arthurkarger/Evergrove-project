@@ -155,6 +155,10 @@ func open_services() -> void:
 
 func return_to_title() -> void:
 	world.save_game()
+	if world.life.save_failed:
+		close()
+		world.hud.show_note("Falha ao salvar. Tente novamente antes de sair.")
+		return
 	get_tree().change_scene_to_file("res://title.tscn")
 
 func show_pause() -> void:

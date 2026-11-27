@@ -3,7 +3,10 @@ extends Node3D
 const Bag = preload("res://backpack.gd")
 const DAY_SECONDS := 180.0
 const Saves = preload("res://world_saves.gd")
-const SAVE := Saves.PRIMARY
+const SAVE := "user://slot-1.json"
+var profile := {"name":"Morador","skin":0,"eye_shape":0,"eye_color":0}
+var world_name := "Evergrove"
+var played := 0.0
 var save_path := Saves.active()
 var lot_exit: Array = []
 const CROPS := {"turnip": ["seed", 2, "f2dab9"], "carrot": ["carrot_seed", 3, "ea873c"], "potato": ["potato_seed", 4, "bc9263"], "wheat": ["wheat_seed", 3, "dfbb60"], "tomato": ["tomato_seed", 5, "dc5143"], "berry": ["berry_seed", 4, "cb4564"]}
@@ -67,6 +70,12 @@ func _ready() -> void:
 		map_id=get_tree().get_meta("evergrove_map")
 		get_tree().remove_meta("evergrove_map")
 		map_seed=preload("res://natural_maps.gd").MAPS[map_id][1]
+	if get_tree().has_meta("new_resident"):
+		var draft: Dictionary=get_tree().get_meta("new_resident")
+		get_tree().remove_meta("new_resident")
+		profile=draft.profile
+		house.look=draft.look
+		world_name=draft.world_name
 	load_progress()
 	for i in plots.size(): attach_bed(i)
 	refresh_resources()
@@ -271,22 +280,14 @@ func save_progress(pos: Vector3) -> void:
 	if protect_existing:
 		save_failed=true
 		return
-	var data := {"version":3,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
-	var f := FileAccess.open(save_path+".tmp",FileAccess.WRITE)
-	save_failed = true
-	if f == null: return
-	f.store_string(JSON.stringify(data))
-	f.flush()
-	var result := f.get_error()
-	f.close()
-	if result == OK:
-		save_failed = DirAccess.rename_absolute(save_path+".tmp",save_path) != OK
+	var data := {"version":4,"world_name":world_name,"profile":profile,"played":played,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	save_failed=not Saves.write_save(save_path,data)
 
 func load_progress() -> void:
-	if not FileAccess.file_exists(save_path): return
+	if not Saves.occupied(Saves.current): return
 	protect_existing=true
-	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if not data is Dictionary or int(data.get("version",0)) not in [1,2,3]: return
+	var data:=Saves.read_save(save_path)
+	if data.is_empty(): return
 	if not data.get("slots") is Array or data.slots.size() != Bag.SIZE: return
 	if not data.get("plots") is Array: return
 	for item in data.slots:
@@ -303,6 +304,9 @@ func load_progress() -> void:
 		if DirAccess.copy_absolute(save_path,backup)!=OK:
 			save_failed=true
 			return
+	profile=data.get("profile",profile)
+	world_name=Saves.world_name(data)
+	played=maxf(0,float(data.get("played",0)))
 	map_id=data.get("world",{}).get("id","starter_village")
 	map_seed=int(data.get("world",{}).get("seed",0))
 	var settlement_data: Dictionary=data.get("settlement",{})

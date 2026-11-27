@@ -26,8 +26,18 @@ func run() -> void:
 	title.show_menu()
 	check(title.menu.visible and not title.options.visible,"Back to menu")
 	title.play_button.pressed.emit()
-	check(title.maps.visible,"New game offers map selection")
-	title.select_world("pinhal")
+	var wizard=title.wizard
+	check(wizard.visible and wizard.stage=="slots","Jogar opens slots")
+	wizard.create(1)
+	wizard.profile.name="Sol"
+	wizard.cycle("skin",6)
+	wizard.look[1]=2
+	wizard.cycle("eye_color",5)
+	wizard.next_from_character()
+	check(wizard.stage=="world" and wizard.thumbnails.size()==3,"Three initial maps")
+	wizard.selected_map="pinhal"
+	wizard.world_name="Ilha Azul"
+	wizard.finish()
 	await create_timer(0.8).timeout
 	check(is_instance_valid(current_scene) and current_scene.scene_file_path=="res://main.tscn","Jogar loads gameplay")
 	if is_instance_valid(current_scene) and current_scene.scene_file_path=="res://main.tscn":
@@ -38,6 +48,15 @@ func run() -> void:
 		await process_frame
 		await process_frame
 		check(is_instance_valid(current_scene) and current_scene.scene_file_path=="res://title.tscn","Pause returns to main menu")
+	if is_instance_valid(current_scene) and current_scene.scene_file_path=="res://title.tscn":
+		var again=current_scene.wizard
+		current_scene.choose_world()
+		again.confirm_delete(3)
+		again.back()
+		check(preload("res://world_saves.gd").occupied(3),"Cancel deletion retains world")
+		again.confirm_delete(3)
+		again.remove_slot(3)
+		check(not preload("res://world_saves.gd").occupied(3),"Confirm deletion clears world")
 	print("Title menu integration failures: ",failures)
 	quit(1 if failures else 0)
 
@@ -70,7 +89,7 @@ func check_frontier(w) -> void:
 	life.bag.add("stone",5)
 	w.home_ui.fund(obj)
 	check(life.social.coins==465 and not s.fund(obj,life),"Payment exactly once")
-	var snapshot: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(life.SAVE))
+	var snapshot: Dictionary=life.Saves.read_save(life.save_path)
 	check(snapshot.house.objects.back().due==life.day+1 and snapshot.world.id=="pinhal","Pending work persisted")
 	life.advance(life.DAY_SECONDS)
 	w.save_game()
@@ -97,12 +116,26 @@ func check_frontier(w) -> void:
 	check(copy.life.room==-1 and copy.player.position.distance_to(copy.town.outdoor(outside))<1,"Exit at own plot")
 	copy.free()
 	var saves=preload("res://world_saves.gd")
-	var original:=FileAccess.get_file_as_string(saves.PRIMARY)
-	for key in ["brejo","vale","pomar"]:
-		check(saves.select(key),"Select another map")
-		set_meta("evergrove_map",key)
+	var original:=FileAccess.get_file_as_string(life.save_path)
+	for n in [2,3]:
+		saves.current=n
+		set_meta("evergrove_map","pinhal")
 		var other=preload("res://main.tscn").instantiate()
 		root.add_child(other)
-		check(other.life.map_id==key and other.life.house.objects.is_empty() and other.village.house_centers.size()==1,"Independent new world")
+		check(other.life.house.objects.is_empty() and other.life.world_name!="Ilha Azul","Same map, independent slot")
 		other.free()
-	check(saves.select("pinhal") and FileAccess.get_file_as_string(saves.PRIMARY)==original,"Original save preserved across map selection")
+	check(saves.erase(2) and not saves.occupied(2) and saves.occupied(3),"Only selected slot erased")
+	check(FileAccess.get_file_as_string(life.save_path)==original,"First slot untouched")
+	var data: Dictionary=saves.read_save(life.save_path)
+	check(data.world_name=="Ilha Azul" and data.profile.name=="Sol" and data.profile.skin==1 and data.profile.eye_color==1 and data.house.look[1]==2,"Identity persisted")
+	var legacy:=FileAccess.open(saves.PRIMARY,FileAccess.WRITE)
+	legacy.store_string(JSON.stringify(data))
+	legacy.close()
+	saves.migrate()
+	check(saves.read_save(saves.slot(2))==data and not FileAccess.file_exists(saves.PRIMARY),"Migrate complete world to available slot")
+	check(saves.write_save(saves.slot(2),data),"Backup rotation")
+	var broken:=FileAccess.open(saves.slot(2),FileAccess.WRITE)
+	broken.store_string("{")
+	broken.close()
+	check(saves.read_save(saves.slot(2))==data,"Recover damaged slot")
+	saves.current=1

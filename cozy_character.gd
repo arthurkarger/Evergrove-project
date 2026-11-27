@@ -83,7 +83,15 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 	parent.add_child(part)
 	return part
 
-func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: int, offset: float) -> void:
+const HAIR_COLORS := ["674637","ad804d","393236","ad624c"]
+const CLOTH_COLORS := ["517b91","6e8964","91596b","b29554","49778c","b46454"]
+const SKINS := ["f2c39b","fae1c8","dba071","b87a52","81513c","54392f"]
+const IRIS := ["403432","775039","56796a","506f8a","56515f"]
+
+func configure_player(look: Array,profile: Dictionary,offset: float) -> void:
+	configure(Color(HAIR_COLORS[int(look[1])]),Color(CLOTH_COLORS[int(look[3])]),Color(SKINS[int(profile.skin)]),int(look[0]),int(look[2]),offset,int(profile.eye_shape),Color(IRIS[int(profile.eye_color)]))
+
+func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: int, offset: float,eye_shape:=0,iris:=Color("3a3030")) -> void:
 	if is_instance_valid(body) and body.get_parent() == self:
 		remove_child(body)
 		body.queue_free()
@@ -129,8 +137,8 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	shape(body,"Back hair",Vector3(0,1.37,-0.23),Vector3(0.73,0.63,0.42),hair)
 	for side in [-1,1]:
 		shape(body,"Ear",Vector3(side*0.365,1.37,0),Vector3(0.16,0.22,0.17),skin)
-		var eye := shape(body,"Eye",Vector3(side*0.135,1.43,0.306),Vector3(0.082,0.125,0.043),Color("3a3030"))
-		var glint := shape(body,"Eye highlight",Vector3(side*0.135-0.014,1.456,0.329),Vector3(0.026,0.028,0.012),Color("fff5e4"))
+		var eye := shape(body,"Eye",Vector3(side*0.135,1.43,0.306),[Vector3(.082,.125,.043),Vector3(.105,.101,.044),Vector3(.113,.071,.041)][eye_shape],iris)
+		var glint := shape(body,"Eye highlight",Vector3(side*0.135-0.014,1.43+[.026,.017,.012][eye_shape],0.329),Vector3(0.026,0.028,0.012),Color("fff5e4"))
 		for part in [eye,glint]:
 			eyes.append(part)
 			eye_scales.append(part.scale)

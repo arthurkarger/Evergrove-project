@@ -11,7 +11,7 @@ var camera := Camera3D.new()
 var sun := DirectionalLight3D.new()
 var env := Environment.new()
 var menu := VBoxContainer.new()
-var maps := VBoxContainer.new()
+var wizard:=preload("res://new_beginning.gd").new()
 var options := VBoxContainer.new()
 var fade := ColorRect.new()
 var play_button: Button
@@ -167,25 +167,7 @@ func build_interface() -> void:
 	spacer.custom_minimum_size.y=14
 	menu.add_child(spacer)
 	play_button=button(menu,"Jogar",choose_world,true)
-	if FileAccess.file_exists(Saves.PRIMARY): button(menu,"Mundos",show_maps)
 	options_button=button(menu,"Opções",show_options)
-	pages.add_child(maps)
-	maps.hide()
-	text_label(maps,"Escolha seu mapa",26)
-	var cards := GridContainer.new()
-	cards.columns=2
-	maps.add_child(cards)
-	var layouts = preload("res://natural_maps.gd")
-	var primary_map:=Saves.primary_id()
-	for id in layouts.MAPS:
-		var data: Array=layouts.MAPS[id]
-		var exists: bool=FileAccess.file_exists(Saves.slot(id)) or primary_map==id
-		var card := button(cards,str(data[0])+(" · continuar" if exists else ""),select_world.bind(id))
-		card.icon=layouts.new(id,data[1]).thumbnail()
-		card.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
-		card.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	if primary_map=="starter_village": button(maps,"Vila original · continuar",select_world.bind(primary_map))
-	button(maps,"Voltar",show_menu)
 	pages.add_child(options)
 	options.add_theme_constant_override("separation",7)
 	text_label(options,"Opções",32)
@@ -213,6 +195,8 @@ func build_interface() -> void:
 	version.offset_bottom=-12
 	version.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
 	fade.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	root.add_child(wizard)
+	wizard.setup(self)
 	root.add_child(fade)
 	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -238,7 +222,7 @@ func show_options() -> void:
 	quality_buttons[quality].grab_focus()
 
 func show_menu() -> void:
-	maps.hide()
+	wizard.hide()
 	if leaving: return
 	options.hide()
 	menu.show()
@@ -322,19 +306,10 @@ func add_note(buffer: PackedFloat32Array, rate: int, start: int, note: int, dura
 		buffer[idx]+=sample
 
 func choose_world() -> void:
-	if FileAccess.file_exists(Saves.active()):
-		start_game()
-	else:
-		show_maps()
-
-func show_maps() -> void:
+	if leaving: return
+	Saves.migrate()
 	menu.hide()
-	maps.show()
-
-func select_world(id: String) -> void:
-	if leaving or not Saves.select(id): return
-	if not FileAccess.file_exists(Saves.active()): get_tree().set_meta("evergrove_map",id)
-	start_game()
+	wizard.slots()
 
 func start_game() -> void:
 	if leaving: return
@@ -352,6 +327,9 @@ func start_game() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if leaving or not event is InputEventKey or not event.pressed or event.echo: return
-	if event.keycode==KEY_ESCAPE and (options.visible or maps.visible):
+	if event.keycode==KEY_ESCAPE and wizard.visible:
+		wizard.back()
+		get_viewport().set_input_as_handled()
+	elif event.keycode==KEY_ESCAPE and options.visible:
 		show_menu()
 		get_viewport().set_input_as_handled()

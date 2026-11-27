@@ -67,7 +67,7 @@ func run() -> void:
 	check(second.life.room==5 and second.player.position.distance_to(w.player.position)<0.05,"resume inside")
 	check(second.life.social.coins==49 and second.life.social.record(0).done==1 and second.life.social.record(0).bond==16,"social save")
 	# Load a save in the 0.3 format from an isolated test profile.
-	var old: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(life.SAVE))
+	var old: Dictionary = life.Saves.read_save(life.save_path)
 	old.version=1
 	for key in ["coins","friends","local","room"]: old.erase(key)
 	var file := FileAccess.open(life.SAVE,FileAccess.WRITE)
