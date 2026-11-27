@@ -2,8 +2,8 @@ extends Node3D
 
 const LIMIT_X := 30
 const LIMIT_Z := 23
-const WOOD := "896449"
-const TRAIL := "ddbf8e"
+const WOOD := "906744"
+const TRAIL := "d2b58e"
 
 var meshes := {}
 var batches := {}
@@ -12,22 +12,29 @@ var terrain := StaticBody3D.new()
 func _ready() -> void:
 	add_child(terrain)
 	var crown := SphereMesh.new()
-	crown.radial_segments = 8
-	crown.rings = 3
+	crown.radial_segments = 12
+	crown.rings = 6
 	crown.height = 1
 	crown.radius = 0.5
 	var disc := CylinderMesh.new()
-	disc.radial_segments = 16
+	disc.radial_segments = 32
 	disc.height = 1
 	var cone := CylinderMesh.new()
-	cone.radial_segments = 8
+	cone.radial_segments = 12
 	cone.top_radius = 0
 	cone.height = 1
-	meshes = {"box": BoxMesh.new(), "round": crown, "disc": disc, "pine": cone, "roof": PrismMesh.new()}
+	var trunk := CylinderMesh.new()
+	trunk.radial_segments = 10
+	trunk.rings = 1
+	trunk.top_radius = 0.37
+	trunk.bottom_radius = 0.5
+	trunk.height = 1
+	meshes = {"box": BoxMesh.new(), "round": crown, "disc": disc, "pine": cone, "roof": PrismMesh.new(), "trunk": trunk, "ground": BoxMesh.new(), "water": disc, "shore": disc}
 	build_paths()
 	build_homes()
 	build_lake()
 	build_groves()
+	garden_details()
 	flush_batches()
 
 # Share primitive geometry and draw repeated scenery in spatial batches.
@@ -38,15 +45,70 @@ func piece(kind: String, position_3d: Vector3, size: Vector3, tint: String, angl
 	var basis := Basis(Vector3.UP, angle) * Basis.from_scale(size)
 	batches[key].append([Transform3D(basis, position_3d), Color(tint)])
 
+func landscape_material(water: bool) -> ShaderMaterial:
+	var shader := Shader.new()
+	if water:
+		shader.code = """
+shader_type spatial;
+render_mode diffuse_burley, specular_disabled;
+varying vec3 world_pos;
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = world_pos.xz;
+	float shore = length((p - vec2(22.0, -7.0)) / vec2(6.0, 8.0));
+	float ripple = sin(p.x * 1.8 + p.y * 2.1 + TIME * 0.75) * sin(p.y * 1.7 - TIME * 0.48);
+	vec3 deep = vec3(0.19, 0.48, 0.53);
+	vec3 shallow = vec3(0.39, 0.69, 0.64);
+	vec3 c = mix(deep, shallow, smoothstep(0.20, 1.0, shore));
+	float wave = smoothstep(0.83, 0.98, ripple) * 0.075;
+	ALBEDO = c + vec3(wave);
+	ROUGHNESS = 0.9;
+	SPECULAR = 0.0;
+}
+"""
+	else:
+		shader.code = """
+shader_type spatial;
+render_mode diffuse_burley, specular_disabled;
+varying vec3 world_pos;
+float hash(vec2 p) {
+	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+void vertex() {
+	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+}
+void fragment() {
+	vec2 p = world_pos.xz;
+	float patch = sin(p.x * 0.54 + sin(p.y * 0.32)) * cos(p.y * 0.61);
+	vec2 cell = floor(p * 2.4);
+	vec2 f = fract(p * 2.4) - 0.5;
+	float fleck = (1.0 - smoothstep(0.045, 0.13, length(f * vec2(0.85, 1.5)))) * step(0.79, hash(cell));
+	float shade = 0.035 * patch + 0.035 * fleck;
+	ALBEDO = vec3(0.32, 0.53, 0.24) + vec3(shade, shade, shade * 0.55);
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}
+"""
+	var result := ShaderMaterial.new()
+	result.shader = shader
+	return result
+
 func flush_batches() -> void:
 	var material := StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
+	material.roughness = 1.0
+	material.metallic_specular = 0.0
+	var grass_material := landscape_material(false)
+	var water_material := landscape_material(true)
 	for key: String in batches:
 		var items: Array = batches[key]
 		var batch := MultiMesh.new()
 		batch.transform_format = MultiMesh.TRANSFORM_3D
 		batch.use_colors = true
-		batch.mesh = meshes[key.get_slice(":", 0)]
+		var kind := key.get_slice(":", 0)
+		batch.mesh = meshes[kind]
 		batch.instance_count = items.size()
 		for i in items.size():
 			batch.set_instance_transform(i, items[i][0])
@@ -54,6 +116,14 @@ func flush_batches() -> void:
 		var instance := MultiMeshInstance3D.new()
 		instance.multimesh = batch
 		instance.material_override = material
+		if kind == "ground":
+			instance.material_override = grass_material
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "water":
+			instance.material_override = water_material
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "shore":
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(instance)
 	batches.clear()
 
@@ -73,7 +143,7 @@ func path_between(a: Vector2, b: Vector2, width: float) -> void:
 	piece("disc", Vector3(b.x,0.019,b.y), Vector3(width,0.02,width), TRAIL)
 
 func build_paths() -> void:
-	piece("box", Vector3(0,-0.32,0), Vector3(120,0.64,102), "91b579")
+	piece("ground", Vector3(0,-0.32,0), Vector3(120,0.64,102), "91b579")
 	wall(Vector3(0,-0.3,0), Vector3(70,0.6,56))
 	var plaza := Vector2(0,2)
 	piece("disc", Vector3(0,0.038,2), Vector3(12,0.03,9), "d7bc96")
@@ -120,6 +190,12 @@ func cottage(x: float,z: float,roof: String,plaster: String) -> void:
 	wall(center,Vector3(4.4,2.44,3.4))
 	piece("box",Vector3(x,0.19,z),Vector3(4.5,0.38,3.5),"988874")
 	piece("roof",Vector3(x,3.13,z),Vector3(5.15,1.55,4.15),roof)
+	# Rounded eaves and timber trim add a handcrafted silhouette.
+	var trim := Color(roof).darkened(0.15).to_html(false)
+	for dz in [-1.91,1.91]:
+		piece("round",Vector3(x,2.40,z+dz),Vector3(5.06,0.26,0.35),trim)
+	piece("round",Vector3(x,3.88,z),Vector3(4.87,0.23,0.32),roof)
+	piece("box",Vector3(x,0.10,z+1.91),Vector3(1.45,0.20,0.48),"b8a28a")
 	piece("box",Vector3(x+1.35,3.41,z-0.7),Vector3(0.46,1.65,0.52),"947c69")
 	piece("box",Vector3(x,0.85,z+1.74),Vector3(0.93,1.7,0.12),WOOD)
 	piece("round",Vector3(x+0.29,0.77,z+1.83),Vector3(0.12,0.12,0.09),"e7bf77")
@@ -127,6 +203,10 @@ func cottage(x: float,z: float,roof: String,plaster: String) -> void:
 		piece("box",Vector3(x+dx,1.4,z+1.72),Vector3(0.98,1.02,0.08),WOOD)
 		piece("box",Vector3(x+dx,1.4,z+1.78),Vector3(0.76,0.8,0.06),"91c1bc")
 		piece("box",Vector3(x+dx,1.4,z+1.82),Vector3(0.08,0.83,0.04),"f1dcb8")
+		piece("box",Vector3(x+dx,0.88,z+1.87),Vector3(1.08,0.12,0.30),"a57a56")
+		for j in 3:
+			piece("round",Vector3(x+dx+(j-1)*0.25,1.02,z+1.96),Vector3(0.24,0.22,0.20),"719a54")
+			piece("round",Vector3(x+dx+(j-1)*0.25,1.14,z+1.98),Vector3(0.16,0.12,0.16),["efbe78","e8a5a2","f1d9a5"][j])
 
 func fence(a: Vector2,b: Vector2) -> void:
 	var line := b-a
@@ -135,7 +215,8 @@ func fence(a: Vector2,b: Vector2) -> void:
 	var count := ceili(line.length()/1.7)
 	for i in range(count+1):
 		var p := a.lerp(b,float(i)/count)
-		piece("box",Vector3(p.x,0.49,p.y),Vector3(0.21,0.98,0.21),"997751")
+		piece("trunk",Vector3(p.x,0.49,p.y),Vector3(0.24,0.98,0.24),"997751")
+		piece("round",Vector3(p.x,0.99,p.y),Vector3(0.26,0.20,0.26),"c49c70")
 	for h in [0.34,0.71]:
 		piece("box",Vector3(mid.x,h,mid.y),Vector3(0.13,0.14,line.length()),"bb9569",angle)
 	wall(Vector3(mid.x,0.5,mid.y),Vector3(0.22,1,line.length()+0.2),angle)
@@ -143,16 +224,19 @@ func fence(a: Vector2,b: Vector2) -> void:
 func bench(x: float,z: float) -> void:
 	for dx in [-0.7,0.7]:
 		piece("box",Vector3(x+dx,0.27,z),Vector3(0.21,0.54,0.58),WOOD)
-	piece("box",Vector3(x,0.55,z),Vector3(2,0.14,0.65),"bb8a59")
-	piece("box",Vector3(x,0.9,z-0.28),Vector3(2,0.45,0.12),"a77b52")
+	for j in 4:
+		piece("box",Vector3(x,0.55,z-0.24+j*0.16),Vector3(2,0.14,0.14),"bb8a59")
+	for j in 2:
+		piece("box",Vector3(x,0.80+j*0.21,z-0.28),Vector3(2,0.17,0.12),"a77b52")
+	for dx in [-0.83,0.83]:
+		piece("round",Vector3(x+dx,0.71,z),Vector3(0.20,0.18,0.60),WOOD)
 	wall(Vector3(x,0.48,z),Vector3(2,0.96,0.65))
 
 func build_lake() -> void:
 	var x := 22.0
 	var z := -7.0
-	piece("disc",Vector3(x,0.065,z),Vector3(12.8,0.09,16.8),"c8b38b")
-	piece("disc",Vector3(x,0.12,z),Vector3(12,0.06,16),"77b8b3")
-	piece("disc",Vector3(x+0.35,0.16,z-0.3),Vector3(10,0.03,13.7),"64a6aa")
+	piece("shore",Vector3(x,0.065,z),Vector3(12.8,0.09,16.8),"c4ae83")
+	piece("water",Vector3(x,0.12,z),Vector3(12,0.06,16),"77b8b3")
 	# Match the faceted waterline, with vertical sides above the player capsule.
 	var outline := PackedVector3Array()
 	for i in 16:
@@ -164,26 +248,33 @@ func build_lake() -> void:
 	var bank := CollisionShape3D.new()
 	bank.shape = hull
 	terrain.add_child(bank)
-	for i in 8:
+	for i in 7:
 		var a := i*2.4
-		piece("round",Vector3(x+3.7*cos(a),0.18,z+5*sin(a)),Vector3(0.85,0.035,0.16),"a7d6c8")
+		var p := Vector3(x+4.9*cos(a),0.17,z+6.4*sin(a))
+		piece("disc",p,Vector3(0.65,0.035,0.54),"719e65")
+		if i%2==0:
+			piece("round",p+Vector3.UP*0.08,Vector3(0.22,0.13,0.21),"f4d5b4")
 	for p in [Vector2(17,-13),Vector2(27,-2),Vector2(27,-12),Vector2(21,2)]:
 		for j in 5:
 			piece("pine",Vector3(p.x+0.17*j,0.38,p.y+0.16*sin(j)),Vector3(0.21,0.76,0.2),"748e57")
 
 func tree(x: float,z: float,s: float,kind: int) -> void:
 	var base := Vector3(x,0,z)
-	piece("box",base+Vector3.UP*s,Vector3(0.52,2,0.52)*s,WOOD)
+	piece("trunk",base+Vector3.UP*s,Vector3(0.72,2,0.72)*s,WOOD)
+	piece("round",base+Vector3.UP*0.14*s,Vector3(0.95,0.29,0.85)*s,WOOD)
 	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
 	if kind == 1:
 		for i in 3:
 			var w := 2.9-i*0.61
 			piece("pine",base+Vector3.UP*(1.9+i*0.76)*s,Vector3(w,2,w)*s,["50785c","628567","769672"][i])
+			piece("round",base+Vector3.UP*(1.15+i*0.76)*s,Vector3(w*0.86,0.48,w*0.86)*s,["50785c","628567","769672"][i])
 	else:
 		var dark := "628753" if kind == 0 else "799755"
 		var light := "87a862" if kind == 0 else "a4b86b"
 		piece("round",base+Vector3(0,2.45,0)*s,Vector3(3.3,2.7,3)*s,dark)
-		piece("round",base+Vector3(-0.5,3.04,0.18)*s,Vector3(2.45,2,2.35)*s,light)
+		piece("round",base+Vector3(-0.75,2.7,0.19)*s,Vector3(2.12,1.92,2.02)*s,light)
+		piece("round",base+Vector3(0.72,2.78,-0.17)*s,Vector3(2.20,2.10,2.10)*s,dark)
+		piece("round",base+Vector3(-0.15,3.40,-0.12)*s,Vector3(2.45,1.95,2.28)*s,light)
 		if kind == 2:
 			for offset in [Vector3(-0.7,2.6,1.15),Vector3(0.63,2.3,1.24),Vector3(1.34,2.65,0.15)]:
 				piece("round",base+offset*s,Vector3.ONE*0.31*s,"d8815d")
@@ -192,7 +283,10 @@ func flowers(x: float,z: float,color: String) -> void:
 	for i in 8:
 		var p := Vector3(x+cos(i*2.4)*sqrt(i)*0.28,0,z+sin(i*2.4)*sqrt(i)*0.21)
 		piece("round",p+Vector3.UP*0.14,Vector3(0.31,0.28,0.25),"658b59")
-		piece("round",p+Vector3.UP*0.29,Vector3(0.23,0.13,0.22),color)
+		for j in 4:
+			var angle := TAU*j/4.0
+			piece("round",p+Vector3(cos(angle)*0.09,0.29,sin(angle)*0.09),Vector3(0.15,0.10,0.15),color)
+		piece("round",p+Vector3.UP*0.33,Vector3(0.10,0.075,0.10),"e4b65d")
 
 func build_groves() -> void:
 	for i in range(-5,6):
@@ -213,3 +307,12 @@ func build_groves() -> void:
 			var pos := Vector3(p.x+j*1.1,w*0.24,p.y+j*0.55)
 			piece("round",pos,Vector3(w,w*0.77,w*0.9),"93988a")
 			wall(pos,Vector3(w*0.84,w*0.69,w*0.77))
+
+# Small landscaping accents outside paths and doors; purely decorative.
+func garden_details() -> void:
+	for p in [Vector2(-18,-13),Vector2(-7,-17),Vector2(6,11),Vector2(19,17),Vector2(-26,-13),Vector2(-17,19),Vector2(26,4)]:
+		for j in 3:
+			var center := Vector3(p.x+j*0.56,0.27,p.y+sin(j*1.8)*0.34)
+			piece("round",center,Vector3(0.77,0.62,0.72),["719954","83a862","658b4f"][j])
+			if j==1:
+				piece("round",center+Vector3(0.04,0.26,0.18),Vector3(0.18,0.13,0.18),"edb4a0")
