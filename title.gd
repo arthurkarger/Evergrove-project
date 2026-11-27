@@ -21,17 +21,20 @@ var music_volume := 0.45
 var music := AudioStreamPlayer.new()
 var t := 0.0
 var leaving := false
+var intro: Tween
 
 func _ready() -> void:
 	load_settings()
 	build_landscape()
 	build_interface()
+	add_child(music)
 	if DisplayServer.get_name()!="headless":
 		build_music()
 	apply_settings()
 	play_button.grab_focus()
 	fade.color = Color("243b2f")
-	create_tween().tween_property(fade,"modulate:a",0.0,0.65)
+	intro=create_tween()
+	intro.tween_property(fade,"modulate:a",0.0,0.65)
 
 func load_settings() -> void:
 	var cfg := ConfigFile.new()
@@ -286,7 +289,6 @@ func build_music() -> void:
 	stream.loop_begin=0
 	stream.loop_end=length
 	music.stream=stream
-	add_child(music)
 	music.play()
 
 func add_note(buffer: PackedFloat32Array, rate: int, start: int, note: int, duration: float, amp: float) -> void:
@@ -301,6 +303,7 @@ func add_note(buffer: PackedFloat32Array, rate: int, start: int, note: int, dura
 func start_game() -> void:
 	if leaving: return
 	leaving=true
+	if intro != null and intro.is_running(): intro.kill()
 	play_button.disabled=true
 	options_button.disabled=true
 	fade.mouse_filter=Control.MOUSE_FILTER_STOP
