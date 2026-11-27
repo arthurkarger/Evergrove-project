@@ -1,4 +1,4 @@
-# Evergrove — 0.5.1 · Welcome to Evergrove
+# Evergrove — 0.5.2 · Quality of Life
 
 Simulador de vida rural em desenvolvimento. Godot 4.4.1 / GDScript. Simulador 3D estilizado, câmera ortográfica inclinada, colisões e joystick touchscreen. WASD ou setas no PC.
 
@@ -25,3 +25,6 @@ Abra a aba Actions, selecione Android APK e baixe o artefato Evergrove-Android a
 
 ## Modelos 3D do Blender
 O workflow Android APK gera os GLBs em `assets/models/generated/` antes da importação do Godot. O Blender não é necessário no dispositivo. Casas da vila (sete paletas), árvores comuns, pinheiros, árvores frutíferas e bancos usam malhas importadas, agrupadas espacialmente via MultiMesh. Personagens usam malhas Blender para cabeça, tronco, membros, sapatos e cabelo, mantendo materiais personalizáveis e animação procedural existente. Colisões e salvamentos continuam independentes das malhas. Móveis construídos, interiores e outros objetos ainda usam os modelos anteriores. Sem GLBs, a versão de desenvolvimento local conserva a geometria procedural como fallback. Para gerar localmente, execute `blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets` antes da importação do Godot. O workflow separado Blender - Generate Evergrove Assets continua gerando as prévias PNG dos três modelos de demonstração.
+
+## Interface 0.5.2
+Diálogos dos moradores aparecem na parte inferior, com texto progressivo, som suave e gesto do personagem. Toque no diálogo ou use E para revelar o texto, depois escolha presentear, pedir tarefa ou encerrar. A mochila usa ícones vetoriais, destaque de seleção e indicação de espaços; a ação contextual só aparece quando disponível. Armazém, oficina e baú usam a mesma identidade visual e mostram informações de capacidade e recursos. O formato de save permanece inalterado.

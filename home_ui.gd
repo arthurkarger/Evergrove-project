@@ -1,4 +1,5 @@
 extends CanvasLayer
+const Style = preload("res://ui_style.gd")
 
 var world
 var site
@@ -36,16 +37,19 @@ func setup(game) -> void:
 	site=game.site
 	add_child(menu)
 	menu.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	menu.color=Color("233028b8")
+	menu.color=Color("23302888")
+	menu.theme=Style.theme()
 	var center := CenterContainer.new()
 	menu.add_child(center)
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var panel := PanelContainer.new()
 	center.add_child(panel)
-	panel.custom_minimum_size.x=410
-	panel.add_theme_stylebox_override("panel",game.hud.panel_style("35483e","c5b08b"))
+	panel.custom_minimum_size.x=470
+	panel.add_theme_stylebox_override("panel",Style.box(Style.PAPER,Color("dfcba2"),22,14,2))
 	var col := VBoxContainer.new()
 	panel.add_child(col)
+	col.add_theme_constant_override("separation",8)
+	title.add_theme_font_size_override("font_size",27)
 	col.add_child(title)
 	col.add_child(note)
 	note.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
@@ -130,7 +134,11 @@ func draw() -> void:
 					var costs := PackedStringArray()
 					for k in house.RECIPES[id]:
 						costs.append("%d %s" % [house.RECIPES[id][k],bag.NAMES[k]])
-					button(options,line+"   ·   "+", ".join(costs),craft.bind(id))
+					var craft_button := button(options,line+"   ·   "+", ".join(costs),craft.bind(id))
+					var enough := true
+					for k in house.RECIPES[id]:
+						if bag.quantity(k)<int(house.RECIPES[id][k]): enough=false
+					craft_button.disabled=not enough
 			link("Voltar","home")
 		"look":
 			title.text="Aparência"
@@ -140,7 +148,11 @@ func draw() -> void:
 			link("Voltar","home")
 		"chest":
 			title.text="Baú · 36 espaços"
-			button(options,"Guardar → trocar para retirar" if deposit else "Retirar → trocar para guardar",switch_chest)
+			button(options,"Guardar itens  /  Retirar" if deposit else "Retirar itens  /  Guardar",switch_chest)
+			var used := 0
+			for entry in house.objects[chest].slots:
+				if entry!=null: used+=1
+			note.text="%d / 36 espaços ocupados" % used
 			var slots: Array=bag.slots if deposit else house.objects[chest].slots
 			var count := 0
 			for i in slots.size():

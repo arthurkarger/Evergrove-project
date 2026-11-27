@@ -198,7 +198,7 @@ func interact_focus() -> void:
 			save_game()
 
 func use_item() -> void:
-	if graphics.shade.visible: return
+	if graphics.shade.visible or home_ui.menu.visible or site.active: return
 	if hud.shade.visible or village_menu.shade.visible: return
 	update_world_ui()
 	if focus_kind!="":
@@ -227,8 +227,11 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if village_menu.shade.visible:
-		if event.keycode in [KEY_ESCAPE,KEY_E,KEY_I]:
+		if event.keycode in [KEY_ESCAPE,KEY_I]:
 			village_menu.close()
+			get_viewport().set_input_as_handled()
+		elif event.keycode in [KEY_E,KEY_SPACE] and village_menu.resident>=0:
+			village_menu.advance_dialogue()
 			get_viewport().set_input_as_handled()
 		return
 	match event.keycode:
@@ -304,7 +307,7 @@ func update_world_ui() -> void:
 	var phase := life.clock / life.DAY_SECONDS
 	var hours := posmod(6+floori(phase*24),24)
 	var minutes := floori(fmod(phase*24,1.0)*6)*10
-	hud.clock_label.text = "Dia %d  ·  %02d:%02d  ·  %d F  ·  v%s" % [life.day,hours,minutes,life.social.coins,ProjectSettings.get_setting("application/config/version")]
+	hud.clock_label.text = "Dia %d   %02d:%02d   ·   %d folhas" % [life.day,hours,minutes,life.social.coins]
 	update_solar_lighting(phase)
 
 func update_solar_lighting(phase: float) -> void:

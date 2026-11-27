@@ -86,6 +86,15 @@ jobs:
           godot --headless --path . --script res://tests/home.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-home.log"
           grep -Fx 'Home integration failures: 0' "$RUNNER_TEMP/evergrove-home.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-home.log"; then exit 1; fi
+      - name: Verify polished HUD and dialogue
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-polish-profile
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script res://tests/polish.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-polish.log"
+          grep -Fx 'Polish integration failures: 0' "$RUNNER_TEMP/evergrove-polish.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-polish.log"; then exit 1; fi
       - name: Verify title menu, options and game transition
         shell: bash
         env:

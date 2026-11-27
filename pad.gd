@@ -10,9 +10,9 @@ func _draw():
 	if not DisplayServer.is_touchscreen_available():
 		return
 	var p := Vector2(105,get_viewport_rect().size.y-105) if finger<0 else center
-	draw_circle(p,65,Color(0.1,0.15,0.12,0.28))
-	draw_arc(p,65,0,TAU,48,Color(1,1,1,0.5),2,true)
-	draw_circle(p+offset,25,Color(1,1,1,0.55))
+	draw_circle(p,58,Color(0.12,0.20,0.14,0.14))
+	draw_arc(p,58,0,TAU,48,Color(1,0.96,0.83,0.36),1.5,true)
+	draw_circle(p+offset,22,Color(1,0.96,0.83,0.55))
 func _input(event):
 	if event is InputEventScreenTouch:
 		if event.pressed and finger<0 and event.position.x<get_viewport_rect().size.x*0.28 and event.position.y>get_viewport_rect().size.y*0.35:
