@@ -1,0 +1,64 @@
+name: Water preview (no APK)
+on:
+  push:
+    branches: [preview/water-multitouch]
+  workflow_dispatch:
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/godotengine/godot/releases/download/4.4.1-stable
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          sudo install -m 755 /tmp/godot-bin/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+      - name: Generate Blender game models
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets
+          for model in house_628693 house_946e57 house_96778c house_577453 house_b76349 house_597e80 house_84905d tree pine fruit_tree bench character_head character_torso character_limb character_shoe character_hair; do
+            test -s "assets/models/generated/$model.glb"
+          done
+      - name: Import project
+        shell: bash
+        run: |
+          godot --headless --editor --path . --import
+          python3 tools/compress_model_textures.py
+          godot --headless --editor --path . --import
+      - name: Verify multitouch and weather uniforms
+        timeout-minutes: 2
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/water-touch-test
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script res://tests/water_touch.gd 2>&1 | tee "$RUNNER_TEMP/touch.log"
+          grep -Fx 'Water and multitouch failures: 0' "$RUNNER_TEMP/touch.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/touch.log"; then exit 1; fi
+      - name: Capture water screenshots with compatibility renderer
+        if: ${{ always() }}
+        timeout-minutes: 5
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/water-preview-profile
+          EVERGROVE_PREVIEWS: ${{ runner.temp }}/water-preview
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends xvfb xauth libgl1-mesa-dri
+          mkdir -p "$EVERGROVE_PREVIEWS"
+          timeout --kill-after=10s 240s xvfb-run -a godot --rendering-method gl_compatibility --rendering-driver opengl3 --audio-driver Dummy --resolution 960x540 --path . --script res://tests/water_preview.gd 2>&1 | tee "$RUNNER_TEMP/water-preview.log"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: Evergrove-Water-Screenshots
+          path: |
+            ${{ runner.temp }}/water-preview/*.png
+            ${{ runner.temp }}/water-preview.log
+            ${{ runner.temp }}/touch.log
+          if-no-files-found: warn
