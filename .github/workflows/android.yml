@@ -70,6 +70,14 @@ jobs:
           godot --headless --path . --script res://tests/home.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-home.log"
           grep -Fx 'Home integration failures: 0' "$RUNNER_TEMP/evergrove-home.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-home.log"; then exit 1; fi
+      - name: Verify pause menu and graphics presets
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-graphics-profile
+        run: |
+          godot --headless --path . --script res://tests/graphics.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-graphics.log"
+          grep -Fx 'Graphics integration failures: 0' "$RUNNER_TEMP/evergrove-graphics.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-graphics.log"; then exit 1; fi
       - name: Export APK
         shell: bash
         run: |
