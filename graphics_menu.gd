@@ -1,4 +1,5 @@
 extends CanvasLayer
+const Desktop = preload("res://desktop_settings.gd")
 signal quality_changed(level: int)
 const SAVE_PATH := "user://graphics.cfg"
 const NAMES := ["Leve", "Médio", "Alto", "Ultra"]
@@ -27,6 +28,7 @@ func load_quality() -> int:
 
 func save_quality() -> void:
 	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)
 	cfg.set_value("graphics","quality",level)
 	cfg.save(SAVE_PATH)
 
@@ -120,6 +122,7 @@ func build(game) -> void:
 	settings_page.add_child(detail)
 	fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	settings_page.add_child(fps)
+	Desktop.add_controls(settings_page)
 	button(settings_page,"Voltar",show_pause)
 	shade.hide()
 	settings_page.hide()
@@ -144,8 +147,8 @@ func open() -> void:
 func close() -> void:
 	shade.hide()
 	world.hud.show()
-	world.pad.set_process_input(true)
-	world.pad.show()
+	world.pad.set_process_input(not Desktop.active())
+	world.pad.visible=not Desktop.active()
 	world.pad.queue_redraw()
 	menu_button.show()
 

@@ -1,4 +1,5 @@
 extends CanvasLayer
+const Desktop = preload("res://desktop_settings.gd")
 const Style = preload("res://ui_style.gd")
 const Grid = preload("res://world_grid.gd")
 
@@ -440,6 +441,7 @@ func build(id: String) -> void:
 
 func status() -> void:
 	hint.text="Catálogo para construir · toque em um objeto para editar" if site.kind=="" else str(world.life.house.NAMES[site.kind])+" · escolha um quadrado"
+	if Desktop.active(): hint.text+=" · clique/arraste · R girar · Enter confirmar"
 	if site.kind!="":
 		var footprint: Vector2i=world.life.house.size_of(site.kind,site.turns)
 		hint.text+=" · %d × %d" % [footprint.x,footprint.y]

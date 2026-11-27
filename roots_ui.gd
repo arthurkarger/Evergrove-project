@@ -39,6 +39,7 @@ var hint := Label.new()
 var held_label := Label.new()
 var build_button := Button.new()
 var craft_button := Button.new()
+const Desktop = preload("res://desktop_settings.gd")
 var run_button := Button.new()
 var touch_buttons := {}
 
@@ -202,7 +203,7 @@ func build(model) -> void:
 	run_button.offset_right=-12
 	run_button.offset_top=-144
 	run_button.offset_bottom=-88
-	run_button.visible=DisplayServer.is_touchscreen_available()
+	run_button.visible=(DisplayServer.is_touchscreen_available() and not Desktop.active())
 	add_child(note)
 	note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	note.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -294,7 +295,7 @@ func show_note(message: String) -> void:
 
 func _process(delta: float) -> void:
 	action.visible=not action.disabled
-	run_button.visible=DisplayServer.is_touchscreen_available() and not shade.visible
+	run_button.visible=(DisplayServer.is_touchscreen_available() and not Desktop.active()) and not shade.visible
 	if not is_visible() or shade.visible: run_button.set_pressed_no_signal(false)
 	if notice_time > 0:
 		notice_time -= delta

@@ -1,4 +1,5 @@
 extends Node3D
+const Desktop = preload("res://desktop_settings.gd")
 var player: CharacterBody3D
 var camera: Camera3D
 const CozyCharacter = preload("res://cozy_character.gd")
@@ -129,6 +130,9 @@ func _ready():
 	add_child(ui)
 	pad.world = self
 	ui.add_child(pad)
+	if Desktop.active():
+		pad.hide()
+		pad.set_process_input(false)
 	add_child(hud)
 	hud.build(life.bag)
 	hud.picked.connect(select_slot)
@@ -225,8 +229,8 @@ func toggle_bag(open: bool) -> void:
 	touch = Vector2.ZERO
 	pad.finger = -1
 	pad.offset = Vector2.ZERO
-	pad.set_process_input(not open)
-	pad.visible = not open
+	pad.set_process_input(not open and not Desktop.active())
+	pad.visible = not open and not Desktop.active()
 	pad.queue_redraw()
 	if not open:
 		save_game()
@@ -314,6 +318,10 @@ func use_item() -> void:
 
 func _input(event: InputEvent) -> void:
 	if not initialized or not event is InputEventKey or not event.pressed or event.echo: return
+	if Desktop.active() and event.keycode==KEY_F11:
+		Desktop.toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+		return
 	if graphics.shade.visible:
 		if event.keycode==KEY_ESCAPE:
 			graphics.back()
@@ -322,6 +330,8 @@ func _input(event: InputEvent) -> void:
 	if home_ui.menu.visible or site.active:
 		if event.keycode==KEY_ESCAPE: home_ui.close()
 		elif site.active and event.keycode==KEY_R: home_ui.rotate_item()
+		elif Desktop.active() and site.active and event.keycode==KEY_ENTER and site.valid: home_ui.confirm()
+		elif Desktop.active() and site.active and event.keycode==KEY_DELETE and site.index>=0: home_ui.remove_item()
 		else: return
 		get_viewport().set_input_as_handled()
 		return
@@ -342,11 +352,22 @@ func _input(event: InputEvent) -> void:
 		KEY_ESCAPE:
 			if hud.shade.visible: hud.toggle()
 			else: graphics.open()
-		KEY_E: use_item()
+		KEY_E, KEY_SPACE: use_item()
 		_:
 			if event.keycode >= KEY_1 and event.keycode <= KEY_6 and not hud.shade.visible:
 				select_slot(event.keycode-KEY_1)
 			else: return
+	get_viewport().set_input_as_handled()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not Desktop.active() or not initialized or not event is InputEventMouseButton: return
+	if not event.pressed or event.device==InputEvent.DEVICE_ID_EMULATION: return
+	if graphics.shade.visible or home_ui.menu.visible or site.active or hud.shade.visible or village_menu.shade.visible: return
+	match event.button_index:
+		MOUSE_BUTTON_LEFT: use_item()
+		MOUSE_BUTTON_WHEEL_UP: select_slot(posmod(life.bag.selected-1,6))
+		MOUSE_BUTTON_WHEEL_DOWN: select_slot(posmod(life.bag.selected+1,6))
+		_: return
 	get_viewport().set_input_as_handled()
 
 func update_world_ui() -> void:
@@ -425,6 +446,8 @@ func update_world_ui() -> void:
 	if focus_kind!="":
 		hud.action.disabled = false
 		life.marker.hide()
+	if Desktop.active() and not hud.action.disabled:
+		hud.action.text = "[E] " + hud.action.text
 	var phase := life.clock / life.DAY_SECONDS
 	var hours := posmod(6+floori(phase*24),24)
 	var minutes := floori(fmod(phase*24,1.0)*6)*10

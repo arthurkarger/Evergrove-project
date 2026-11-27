@@ -1,0 +1,83 @@
+name: Windows Desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/workflows/blender-assets.yml'
+concurrency:
+  group: windows-desktop-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot and Windows export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/godotengine/godot/releases/download/4.4.1-stable
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          sudo install -m 755 /tmp/godot-bin/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_export_templates.tpz" -o /tmp/templates.zip
+          unzip -q /tmp/templates.zip -d /tmp/godot-templates
+          DEST="$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          mkdir -p "$DEST" build/windows
+          cp /tmp/godot-templates/templates/windows* "$DEST/"
+          cp /tmp/godot-templates/templates/version.txt "$DEST/"
+          godot --version
+      - name: Generate the same Blender models as Android
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets
+          godot --headless --editor --path . --import
+          python3 tools/compress_model_textures.py
+          godot --headless --editor --path . --import
+      - name: Run gameplay regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test in graphics title polish desktop; do
+            XDG_DATA_HOME="$(mktemp -d)" godot --headless --path . --script "res://tests/$test.gd" 2>&1 | tee "$RUNNER_TEMP/$test.log"
+            if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/$test.log"; then exit 1; fi
+            grep -E 'failures: 0$' "$RUNNER_TEMP/$test.log"
+          done
+      - name: Export Windows x64
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot --headless --path . --export-release "Windows Desktop" build/windows/Evergrove.exe
+          test -s build/windows/Evergrove.exe
+          test -s build/windows/Evergrove.pck
+          file build/windows/Evergrove.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Windows-x64
+          path: build/windows/
+          if-no-files-found: error
+  smoke:
+    needs: export
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Evergrove-Windows-x64
+          path: game
+      - name: Check exported Windows game startup
+        shell: pwsh
+        run: |
+          $log = Join-Path $PWD 'evergrove-smoke.log'
+          $p = Start-Process -FilePath (Join-Path $PWD 'game/Evergrove.exe') -ArgumentList @('--headless','--quit-after','60','--log-file',('"' + $log + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Windows startup failed: $($p.ExitCode)" }
+          if (!(Test-Path $log)) { throw 'Missing startup log' }
+          Get-Content $log
+          if (Select-String -Path $log -Pattern 'SCRIPT ERROR:|ERROR:') { throw 'Godot startup errors' }

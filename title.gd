@@ -1,4 +1,5 @@
 extends Node3D
+const Desktop = preload("res://desktop_settings.gd")
 const Saves = preload("res://world_saves.gd")
 const Village = preload("res://village.gd")
 const GraphicsMenu = preload("res://graphics_menu.gd")
@@ -27,6 +28,7 @@ var intro: Tween
 
 func _ready() -> void:
 	load_settings()
+	Desktop.apply_saved()
 	build_landscape()
 	build_interface()
 	add_child(music)
@@ -168,6 +170,7 @@ func build_interface() -> void:
 	menu.add_child(spacer)
 	play_button=button(menu,"Jogar",choose_world,true)
 	options_button=button(menu,"Opções",show_options)
+	if Desktop.active(): button(menu,"Sair",func(): get_tree().quit())
 	pages.add_child(options)
 	options.add_theme_constant_override("separation",7)
 	text_label(options,"Opções",32)
@@ -183,7 +186,9 @@ func build_interface() -> void:
 		quality_buttons.append(b)
 	add_volume(options,"Volume geral",master_volume,set_master)
 	add_volume(options,"Música do menu",music_volume,set_music)
-	var controls := text_label(options,"Controles: WASD / setas · E interagir · I mochila\nCelular: joystick e botões na tela.",14,Color("e5e9d5"))
+	Desktop.add_controls(options)
+	var guide := "WASD / setas · Shift correr · E ou clique usar · I mochila · B construir · C fabricar · Esc pausa" if Desktop.active() else "Celular: joystick e botões na tela."
+	var controls := text_label(options,guide,14,Color("e5e9d5"))
 	controls.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
 	button(options,"Voltar",show_menu)
 	options.hide()
@@ -327,7 +332,10 @@ func start_game() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if leaving or not event is InputEventKey or not event.pressed or event.echo: return
-	if event.keycode==KEY_ESCAPE and wizard.visible:
+	if Desktop.active() and event.keycode==KEY_F11:
+		Desktop.toggle_fullscreen()
+		get_viewport().set_input_as_handled()
+	elif event.keycode==KEY_ESCAPE and wizard.visible:
 		wizard.back()
 		get_viewport().set_input_as_handled()
 	elif event.keycode==KEY_ESCAPE and options.visible:
