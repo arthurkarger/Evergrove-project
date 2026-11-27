@@ -7,6 +7,11 @@ const TRAIL := "d2b58e"
 
 var meshes := {}
 var batches := {}
+var grass_batches: Array[MultiMeshInstance3D] = []
+var world_materials: Array[ShaderMaterial] = []
+var scenic_material: StandardMaterial3D
+var lamps: Array[OmniLight3D] = []
+var quality_level := 2
 var path_segments: Array = []
 var house_centers: Array[Vector2] = []
 var terrain := StaticBody3D.new()
@@ -38,6 +43,7 @@ func _ready() -> void:
 	build_groves()
 	garden_details()
 	plant_grass()
+	build_lamps()
 	flush_batches()
 
 # Share primitive geometry and draw repeated scenery in spatial batches.
@@ -54,6 +60,7 @@ func landscape_material(water: bool) -> ShaderMaterial:
 		shader.code = """
 shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
+uniform int quality = 2;
 varying vec3 world_pos;
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -65,20 +72,32 @@ void fragment() {
 	vec3 deep = vec3(0.19, 0.48, 0.53);
 	vec3 shallow = vec3(0.39, 0.69, 0.64);
 	vec3 c = mix(deep, shallow, smoothstep(0.20, 1.0, shore));
-	float wave = smoothstep(0.83, 0.98, ripple) * 0.075;
+	float wave = 0.0;
+	if (quality > 0) {
+		wave = smoothstep(0.83, 0.98, ripple) * 0.075;
+	}
+	if (quality > 1) {
+		float fine = sin(p.x * 4.1 + p.y * 3.8 + TIME * 1.12 + ripple) * cos(p.y * 3.1 - TIME * 0.6);
+		wave += smoothstep(0.74, 0.98, fine) * 0.045;
+		wave += smoothstep(0.91, 0.96, shore) * (1.0 - smoothstep(0.96, 1.0, shore)) * (0.06 + 0.035 * sin(TIME * 1.4 + p.x * 2.0));
+	}
+	if (quality == 3) {
+		wave += pow(max(0.0, sin(p.x * 5.0 - p.y * 2.0 + TIME)), 12.0) * 0.035 * (0.5 + 0.5 * ripple);
+	}
 	ALBEDO = c + vec3(wave);
 	// Soft, moving surface normals catch the sun without screen-space reflection.
 	float nx = cos(p.x * 1.8 + p.y * 2.1 + TIME * 0.75) * 0.045;
 	float ny = sin(p.y * 1.7 - TIME * 0.48) * 0.045;
-	NORMAL = normalize(NORMAL + vec3(nx, ny, 0.0));
-	ROUGHNESS = 0.68;
-	SPECULAR = 0.20;
+	if (quality >= 2) { NORMAL = normalize(NORMAL + vec3(nx, ny, 0.0)); }
+	ROUGHNESS = quality == 3 ? 0.49 : 0.78;
+	SPECULAR = quality >= 2 ? 0.20 : 0.0;
 }
 """
 	else:
 		shader.code = """
 shader_type spatial;
 render_mode diffuse_burley, specular_disabled;
+uniform int quality = 2;
 varying vec3 world_pos;
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -94,7 +113,10 @@ void fragment() {
 	float fleck = (1.0 - smoothstep(0.045, 0.13, length(f * vec2(0.85, 1.5)))) * step(0.79, hash(cell));
 	float detail = hash(floor(p * 18.0)) - 0.5;
 	float mottling = sin(p.x * 3.0 + sin(p.y * 2.0)) * cos(p.y * 2.8);
-	float shade = 0.034 * patch + 0.021 * fleck + 0.011 * detail + 0.009 * mottling;
+	float shade = 0.034 * patch;
+	if (quality > 0) { shade += 0.021 * fleck; }
+	if (quality > 1) { shade += 0.011 * detail + 0.009 * mottling; }
+	if (quality == 3) { shade += 0.012 * sin(p.x * 7.0 + p.y * 5.0) * cos(p.y * 8.0); }
 	ALBEDO = vec3(0.35, 0.55, 0.27) + vec3(shade, shade, shade * 0.55);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
@@ -106,6 +128,7 @@ void fragment() {
 
 func flush_batches() -> void:
 	var material := StandardMaterial3D.new()
+	scenic_material = material
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
 	material.metallic_specular = 0.04
@@ -120,6 +143,7 @@ func flush_batches() -> void:
 	var tuft_material := grass_shader()
 	var grass_material := landscape_material(false)
 	var water_material := landscape_material(true)
+	world_materials = [grass_material,water_material,tuft_material]
 	for key: String in batches:
 		var items: Array = batches[key]
 		var batch := MultiMesh.new()
@@ -144,6 +168,7 @@ func flush_batches() -> void:
 			instance.material_override = tuft_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			instance.extra_cull_margin = 0.35
+			grass_batches.append(instance)
 		elif kind == "shore":
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(instance)
@@ -366,6 +391,7 @@ func grass_shader() -> ShaderMaterial:
 	shader.code = """
 shader_type spatial;
 render_mode cull_disabled, diffuse_burley, specular_disabled;
+uniform int quality = 2;
 varying float height;
 varying vec3 tint;
 void vertex() {
@@ -373,8 +399,10 @@ void vertex() {
 	tint = COLOR.rgb;
 	vec3 p = MODEL_MATRIX[3].xyz;
 	float wind = sin(TIME * 1.45 + p.x * 0.55 + p.z * 0.71);
-	VERTEX.x += wind * height * height * 0.15;
-	VERTEX.z += cos(TIME * 1.1 + p.z * 0.64) * height * height * 0.08;
+	if (quality > 0) {
+		VERTEX.x += wind * height * height * 0.15;
+		VERTEX.z += cos(TIME * 1.1 + p.z * 0.64) * height * height * 0.08;
+	}
 }
 void fragment() {
 	ALBEDO = tint * mix(0.72, 1.12, clamp(height, 0.0, 1.0));
@@ -410,7 +438,7 @@ func plant_grass() -> void:
 		Vector2(9,12),Vector2(21,16),Vector2(28,6),Vector2(13,2),
 		Vector2(-6,5),Vector2(4,-5),Vector2(-17,-3),Vector2(18,3)]
 	for center in patches:
-		for i in 54:
+		for i in 105:
 			var angle := rng.randf_range(0.0,TAU)
 			var radius := sqrt(rng.randf())*2.65
 			var p: Vector2 = center+Vector2(cos(angle),sin(angle))*radius
@@ -418,3 +446,39 @@ func plant_grass() -> void:
 			var h := rng.randf_range(0.16,0.42)
 			var w := rng.randf_range(0.28,0.58)
 			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["668d42","7c9f50","90ad5c","73984a"][rng.randi_range(0,3)],angle)
+
+# Warm village lanterns; visuals stay on every preset, light emitters are optional.
+func build_lamps() -> void:
+	for p in [Vector2(-5,3),Vector2(5,3),Vector2(-11,1),Vector2(-22,3),Vector2(-21,12),Vector2(14,7),Vector2(12,-1),Vector2(1,-8)]:
+		var base := Vector3(p.x,0,p.y)
+		piece("trunk",base+Vector3.UP*0.85,Vector3(0.16,1.70,0.16),"534a41")
+		piece("disc",base+Vector3.UP*0.10,Vector3(0.39,0.20,0.39),"534a41")
+		piece("box",base+Vector3.UP*1.77,Vector3(0.29,0.33,0.29),"e4bf79")
+		piece("pine",base+Vector3.UP*2.02,Vector3(0.43,0.28,0.43),"51483e")
+		var lamp := OmniLight3D.new()
+		lamp.position = base+Vector3.UP*1.65
+		lamp.light_color = Color("ffc789")
+		lamp.light_energy = 0.0
+		lamp.omni_range = 5.0
+		lamp.omni_attenuation = 1.8
+		lamp.shadow_enabled = false
+		add_child(lamp)
+		lamps.append(lamp)
+
+func set_quality(level: int) -> void:
+	quality_level = clampi(level,0,3)
+	var density := [0.0,0.25,0.55,1.0]
+	for batch in grass_batches:
+		batch.multimesh.visible_instance_count = roundi(batch.multimesh.instance_count*float(density[quality_level]))
+		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level==3 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for mat in world_materials:
+		mat.set_shader_parameter("quality",quality_level)
+	if scenic_material != null:
+		scenic_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC if quality_level>=2 else BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	for i in lamps.size():
+		lamps[i].visible = quality_level==3 or (quality_level==2 and i%2==0)
+
+func update_lamps(daylight: float) -> void:
+	var energy := (1.0-daylight)*0.9
+	for lamp in lamps:
+		lamp.light_energy = energy
