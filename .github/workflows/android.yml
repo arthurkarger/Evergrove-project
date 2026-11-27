@@ -1,28 +1,52 @@
 name: Android APK
 on: [push, workflow_dispatch]
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    container: barichello/godot-ci:4.4.1
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Configure templates and Android SDK
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Android SDK components
         shell: bash
         run: |
-          mkdir -p "$HOME/.local/share/godot/export_templates" "$HOME/.config/godot" build
-          if [ "$HOME" != /root ]; then
-            cp -r /root/.local/share/godot/export_templates/4.4.1.stable "$HOME/.local/share/godot/export_templates/"
-          fi
-          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' "${ANDROID_HOME:-/opt/android-sdk}" "${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}" > "$HOME/.config/godot/editor_settings-4.4.tres"
-          mkdir -p "$HOME/.android"
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          printf 'export/android/debug_keystore = "%s/.android/debug.keystore"\n' "$HOME" >> "$HOME/.config/godot/editor_settings-4.4.tres"
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+      - name: Install Godot and official export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/godotengine/godot/releases/download/4.4.1-stable
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          sudo install -m 755 /tmp/godot-bin/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_export_templates.tpz" -o /tmp/templates.zip
+          unzip -q /tmp/templates.zip -d /tmp/godot-templates
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+          cp /tmp/godot-templates/templates/android_debug.apk "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          cp /tmp/godot-templates/templates/android_release.apk "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          cp /tmp/godot-templates/templates/version.txt "$HOME/.local/share/godot/export_templates/4.4.1.stable/"
+          godot --version
+      - name: Configure export and debug signing
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.config/godot" "$HOME/.android" build
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s/.android/debug.keystore"\n' "$ANDROID_HOME" "$JAVA_HOME" "$HOME" > "$HOME/.config/godot/editor_settings-4.4.tres"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
       - name: Import project
+        shell: bash
         run: godot --headless --editor --path . --import
-      - name: Export
-        run: godot --headless --path . --export-debug Android build/evergrove.apk
+      - name: Export APK
+        shell: bash
+        run: |
+          godot --headless --verbose --path . --export-debug Android build/evergrove.apk
+          test -s build/evergrove.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify build/evergrove.apk
       - uses: actions/upload-artifact@v4
         with:
           name: Evergrove-Android
