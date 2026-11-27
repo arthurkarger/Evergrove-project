@@ -1,0 +1,37 @@
+name: Blender - Generate Evergrove Assets
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/generate_blender_assets.py'
+      - '.github/workflows/blender-assets.yml'
+permissions:
+  contents: read
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends blender
+          blender --version
+      - name: Generate and render assets
+        run: blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py
+      - name: Verify outputs
+        run: |
+          for name in house tree bench; do
+            test -s "blender-output/$name.glb"
+            test -s "blender-output/$name.png"
+          done
+          ls -lh blender-output/
+      - name: Upload GLB and previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: evergrove-blender-assets
+          path: blender-output/
+          if-no-files-found: error
+          retention-days: 14
