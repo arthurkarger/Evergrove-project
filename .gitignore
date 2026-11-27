@@ -9,3 +9,7 @@ blender-output/
 *.p12
 *.pfx
 EVERGROVE_KEYSTORE_*.txt
+art-staging/
+.env
+.env.*
+__pycache__/

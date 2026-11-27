@@ -166,6 +166,8 @@ void fragment() {
 shader_type spatial;
 render_mode diffuse_burley, specular_disabled;
 uniform int quality = 2;
+uniform sampler2D art_grass : source_color, repeat_enable, filter_linear_mipmap;
+uniform bool has_art_grass = false;
 varying vec3 world_pos;
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -185,13 +187,22 @@ void fragment() {
 	if (quality > 0) { shade += 0.021 * fleck; }
 	if (quality > 1) { shade += 0.011 * detail + 0.009 * mottling; }
 	if (quality == 3) { shade += 0.012 * sin(p.x * 7.0 + p.y * 5.0) * cos(p.y * 8.0); }
-	ALBEDO = vec3(0.27, 0.52, 0.16) + vec3(shade, shade, shade * 0.55);
+	vec3 grass_base = vec3(0.27, 0.52, 0.16);
+	if (has_art_grass && quality > 0) {
+		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.65);
+	}
+	ALBEDO = grass_base + vec3(shade, shade, shade * 0.55);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
 """
 	var result := ShaderMaterial.new()
 	result.shader = shader
+	if not water:
+		var grass := preload("res://art_assets.gd").surface("grass")
+		if grass != null:
+			result.set_shader_parameter("art_grass", grass)
+			result.set_shader_parameter("has_art_grass", true)
 	return result
 
 func flush_batches() -> void:

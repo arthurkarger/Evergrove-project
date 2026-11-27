@@ -8,6 +8,7 @@ signal moved(from: int,to: int)
 
 const Bag = preload("res://backpack.gd")
 const Style = preload("res://ui_style.gd")
+const ExternalArt = preload("res://art_assets.gd")
 const ICONS := {
 	"axe":["...ii...","..iiii..",".iiiiw..","....w...","...w....","..w.....",".w......","........"],
 	"pick":["..iiii..",".iiiwii.","i...w..i","...w....","...w....","..w.....","..w.....","........"],
@@ -42,6 +43,10 @@ func decorate(b: Button) -> void:
 
 func icon_for(id: String) -> Texture2D:
 	if icons.has(id): return icons[id]
+	var imported := ExternalArt.icon(id)
+	if imported != null:
+		icons[id] = imported
+		return imported
 	var art := {
 		"axe":'<path d="M16 46 L40 15" stroke="#9b6847" stroke-width="7" stroke-linecap="round"/><path d="M29 9 Q42 6 51 18 L38 30 L23 18Z" fill="#a4bac1"/>',
 		"pick":'<path d="M14 47L35 19" stroke="#9b6847" stroke-width="7" stroke-linecap="round"/><path d="M9 21Q25 1 48 18L54 29Q33 14 9 21" fill="#a4bac1"/>',

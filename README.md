@@ -35,3 +35,6 @@ O workflow Android APK gera os GLBs em `assets/models/generated/` antes da impor
 
 ## Interface 0.5.2
 Diálogos dos moradores aparecem na parte inferior, com texto progressivo, som suave e gesto do personagem. Toque no diálogo ou use E para revelar o texto, depois escolha presentear, pedir tarefa ou encerrar. A mochila usa ícones vetoriais, destaque de seleção e indicação de espaços; a ação contextual só aparece quando disponível. Armazém, oficina e baú usam a mesma identidade visual e mostram informações de capacidade e recursos. O formato de save permanece inalterado.
+
+## Pipeline artístico — preparação 0.5.3
+Veja [pipeline de arte](docs/art-pipeline.md) e [plano visual da vila](docs/evergrove-0.5.3-art-direction.md). Ícones PNG aprovados e textura opcional de grama são carregados automaticamente, com fallback para a arte atual. A geração externa é opcional e não ocorre no APK ou na CI.

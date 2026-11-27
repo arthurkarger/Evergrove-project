@@ -12,8 +12,15 @@ func run() -> void:
 	var w=preload("res://main.tscn").instantiate()
 	root.add_child(w)
 	await physics_frame
+	var art = preload("res://art_assets.gd")
+	check(art.icon("../unknown")==null,"Reject unknown art id")
+	check(art.surface("unknown")==null,"Reject unknown surface id")
 	for id in w.life.bag.NAMES:
-		check(w.hud.icon_for(id)!=null,"Illustrated icon "+id)
+		var icon: Texture2D = w.hud.icon_for(id)
+		check(icon!=null,"Illustrated icon "+id)
+		var external: Texture2D = art.icon(id)
+		if external != null:
+			check(icon==external,"Imported icon preferred "+id)
 	w.hud.toggle()
 	check(w.hud.shade.visible and w.hud.cells.size()==24,"Inventory opens")
 	w.hud.toggle()
