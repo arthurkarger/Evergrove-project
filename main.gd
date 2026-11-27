@@ -17,6 +17,10 @@ var life := preload("res://homestead.gd").new()
 var hud := preload("res://roots_ui.gd").new()
 var pad := preload("res://pad.gd").new()
 var sun := DirectionalLight3D.new()
+var sky_fill := DirectionalLight3D.new()
+var sky_dome := Sky.new()
+var sky_paint := ProceduralSkyMaterial.new()
+var sky_period := -1
 var sky := Environment.new()
 var autosave := 0.0
 var ui_elapsed := 0.0
@@ -45,6 +49,11 @@ func _ready():
 	e.ambient_light_color = Color("e5dfd0")
 	e.ambient_light_energy = 0.48
 	e.glow_enabled = false
+	sky_dome.sky_material = sky_paint
+	sky_dome.radiance_size = Sky.RADIANCE_SIZE_128
+	sky_paint.sun_angle_max = 6.0
+	sky_paint.sun_curve = 0.25
+	e.sky = sky_dome
 	env.environment = e
 	add_child(env)
 	sun.rotation_degrees = Vector3(-55,-35,0)
@@ -54,6 +63,10 @@ func _ready():
 	sun.directional_shadow_max_distance = 32.0
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	add_child(sun)
+	sky_fill.shadow_enabled = false
+	sky_fill.light_specular = 0.0
+	sky_fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
+	add_child(sky_fill)
 	add_child(village)
 	add_child(life)
 	player = CharacterBody3D.new()
@@ -282,27 +295,45 @@ func update_world_ui() -> void:
 	update_solar_lighting(phase)
 
 func update_solar_lighting(phase: float) -> void:
-	# Sunrise at 06:00, noon at 12:00, sunset at 18:00.
+	# Sun crosses the sky, with lower intensity and long shadows near the horizon.
 	var elevation := sin(phase*TAU)
-	var daylight := smoothstep(-0.10,0.28,elevation)
-	var twilight := (1.0-smoothstep(0.06,0.60,absf(elevation)))*smoothstep(-0.22,0.02,elevation)
-	var sunset := Color("ffc18a").lerp(Color("ffac82"),clampf(phase*2.0,0.0,1.0))
-	sun.rotation_degrees = Vector3(-lerpf(12.0,68.0,maxf(elevation,0.0)),lerpf(-105.0,105.0,clampf(phase*2.0,0.0,1.0)),0)
-	sun.light_color = Color("a7b9ed").lerp(Color("fff1da").lerp(sunset,twilight),daylight)
-	sun.light_energy = lerpf(0.08,0.68,daylight)
-	sky.ambient_light_energy = lerpf(0.29,0.48,daylight)
-	sky.ambient_light_color = Color("9aabd8").lerp(Color("c7d9db"),daylight).lerp(Color("e5ac91"),twilight*0.64)
-	sky.background_color = Color("293e63").lerp(Color("b8d6dc"),daylight).lerp(Color("eab08e"),twilight)
+	var daylight := smoothstep(-0.13,0.24,elevation)
+	var twilight := (1.0-smoothstep(0.02,0.58,absf(elevation)))*smoothstep(-0.25,0.015,elevation)
+	var dusk := phase>0.25 and phase<0.70
+	var horizon := Color("f6bca1") if not dusk else Color("ef977a")
+	var direct := Color("fff0da").lerp(Color("ffb16f"),twilight*0.92)
+	var strength := lerpf(0.0,0.87,smoothstep(-0.06,0.48,elevation))
+	sun.rotation_degrees = Vector3(-lerpf(8.0,72.0,maxf(elevation,0.0)),lerpf(-105.0,105.0,clampf(phase*2.0,0.0,1.0)),0)
+	sun.light_color = direct
+	sun.light_energy = strength
+	sun.light_specular = 0.45 if quality_level>=2 else 0.10
+	sky.ambient_light_energy = lerpf(0.32,0.46,daylight)
+	sky.ambient_light_color = Color("869bc8").lerp(Color("c6def1"),daylight).lerp(Color("e2b49a"),twilight*0.48)
+	sky.background_color = Color("23354f").lerp(Color("a6cbdc"),daylight).lerp(horizon,twilight)
+	sky_fill.visible = quality_level>=2
+	sky_fill.rotation_degrees = Vector3(-48,sun.rotation_degrees.y+155,0)
+	sky_fill.light_color = Color("93b1eb").lerp(Color("bcd9ed"),daylight)
+	sky_fill.light_energy = lerpf(0.19,0.11,daylight)
+	sky.background_mode = Environment.BG_SKY if quality_level>=2 and life.room<0 else Environment.BG_COLOR
+	var period := floori(phase*48.0)
+	if period!=sky_period:
+		sky_period=period
+		sky_paint.sky_top_color = Color("172741").lerp(Color("6598cd"),daylight).lerp(Color("927caa"),twilight*0.75)
+		sky_paint.sky_horizon_color = sky.background_color
+		sky_paint.ground_horizon_color = sky.background_color
+		sky_paint.ground_bottom_color = Color("41534d").lerp(Color("829484"),daylight)
 	village.update_lamps(daylight)
+	village.update_water_light(sky.background_color,daylight,phase)
 	if grade_material != null:
 		grade_material.set_shader_parameter("dusk",twilight if life.room<0 else 0.0)
 	sky.fog_enabled = quality_level>=2 and life.room<0
 	sky.fog_light_color = sky.background_color
-	sky.fog_density = 0.0035 if quality_level==3 else 0.0018
+	sky.fog_density = 0.006 if quality_level==3 else 0.0025
 	if life.room>=0:
 		sun.rotation_degrees = Vector3(-55,-35,0)
 		sun.light_color = Color("ffe9cb")
 		sun.light_energy = 0.36
+		sky_fill.visible = false
 		sky.ambient_light_energy = 0.62
 		sky.ambient_light_color = Color("e9ddca")
 
@@ -375,7 +406,7 @@ func apply_graphics(level: int) -> void:
 	if grade_overlay != null:
 		grade_overlay.visible = quality_level>0
 		grade_material.set_shader_parameter("quality",quality_level)
-		grade_material.set_shader_parameter("highlight_strength",0.16)
+		grade_material.set_shader_parameter("highlight_strength",0.20 if quality_level==3 else 0.16)
 	update_solar_lighting(life.clock/life.DAY_SECONDS)
 
 func save_game() -> void:
