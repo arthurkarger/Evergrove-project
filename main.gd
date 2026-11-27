@@ -359,15 +359,17 @@ func apply_graphics(level: int) -> void:
 	var viewport := get_viewport()
 	var renderer := RenderingServer.get_current_rendering_method()
 	# Mobile supports a separate 3D resolution scale; keep HUD resolution unchanged.
-	if renderer != "gl_compatibility":
-		viewport.scaling_3d_scale = [0.60,0.80,1.0,1.15][quality_level]
-	viewport.msaa_3d = Viewport.MSAA_4X if quality_level==3 else (Viewport.MSAA_2X if quality_level==2 else Viewport.MSAA_DISABLED)
+	if DisplayServer.get_name() != "headless":
+		if renderer != "gl_compatibility":
+			viewport.scaling_3d_scale = [0.60,0.80,1.0,1.15][quality_level]
+		viewport.msaa_3d = Viewport.MSAA_4X if quality_level==3 else (Viewport.MSAA_2X if quality_level==2 else Viewport.MSAA_DISABLED)
 	sun.shadow_enabled = quality_level>0
 	sun.directional_shadow_max_distance = [12.0,18.0,28.0,42.0][quality_level]
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality_level==3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_blend_splits = quality_level>=2
-	RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
-	RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
+	if DisplayServer.get_name() != "headless":
+		RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
+		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
 	village.set_quality(quality_level)
 	CozyCharacter.set_quality(quality_level)
 	if grade_overlay != null:
