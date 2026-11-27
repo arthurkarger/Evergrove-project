@@ -6,9 +6,12 @@ const Saves = preload("res://world_saves.gd")
 const SAVE := Saves.PRIMARY
 var save_path := Saves.active()
 var lot_exit: Array = []
+const CROPS := {"turnip": ["seed", 2, "f2dab9"], "carrot": ["carrot_seed", 3, "ea873c"], "potato": ["potato_seed", 4, "bc9263"], "wheat": ["wheat_seed", 3, "dfbb60"], "tomato": ["tomato_seed", 5, "dc5143"], "berry": ["berry_seed", 4, "cb4564"]}
+var cell_index := {}
+var aimed := Vector2i.ZERO
 const FIELD := Vector2(3.1,4.6)
-const LABELS := {"wood":"Cortar tronco","stone":"Quebrar rocha","twig":"Pegar graveto","fruit":"Pegar fruta","flower":"Colher flor"}
-const REQUIRED := {"wood":"axe","stone":"pick"}
+const LABELS := {"fiber":"Colher fibras","clay":"Escavar argila","iron":"Minerar ferro","wood":"Cortar tronco","stone":"Quebrar rocha","twig":"Pegar graveto","fruit":"Pegar fruta","flower":"Colher flor"}
+const REQUIRED := {"clay":"shovel","iron":"pick","wood":"axe","stone":"pick"}
 var bag := Bag.new()
 var day := 1
 var clock := 0.0 # Starts at 06:00.
@@ -38,18 +41,15 @@ func _ready() -> void:
 	sphere.radial_segments = 8
 	sphere.rings = 3
 	shapes = {"box":BoxMesh.new(),"round":sphere}
-	for i in 12:
-		plots.append({"soil":false,"growth":-1,"water":false})
-		var bed := Node3D.new()
-		add_child(bed)
-		bed.position = Vector3(FIELD.x+(i%4)*1.25,0.055,FIELD.y+floori(i/4.0)*1.25)
-		beds.append(bed)
 	var locations := {
 		"wood":[Vector2(-6,6),Vector2(-17,6),Vector2(-24,-6),Vector2(10,14)],
 		"stone":[Vector2(1,8),Vector2(17,-14),Vector2(24,4),Vector2(-18,16)],
 		"fruit":[Vector2(-19,5),Vector2(-24,9),Vector2(-19,15),Vector2(-5,4)],
 		"twig":[Vector2(-1,6),Vector2(-10,10),Vector2(10,5),Vector2(20,11)],
 		"flower":[Vector2(2,2),Vector2(-14,-3),Vector2(12,-5),Vector2(15,4)]}
+	locations["fiber"]=[Vector2(-3,7),Vector2(7,11)]
+	locations["clay"]=[Vector2(12,3),Vector2(-18,7)]
+	locations["iron"]=[Vector2(14,-12),Vector2(-9,8)]
 	for id in locations:
 		for p: Vector2 in locations[id]:
 			spawn_resource(id,p)
@@ -68,7 +68,7 @@ func _ready() -> void:
 		get_tree().remove_meta("evergrove_map")
 		map_seed=preload("res://natural_maps.gd").MAPS[map_id][1]
 	load_progress()
-	for i in beds.size(): draw_bed(i)
+	for i in plots.size(): attach_bed(i)
 	refresh_resources()
 
 func material(color: String) -> StandardMaterial3D:
@@ -96,6 +96,10 @@ func spawn_resource(id: String, p: Vector2) -> void:
 	var model_id: String={"stone":"river_stones","flower":"wildflowers"}.get(id,"")
 	if model_id!="" and preload("res://blender_models.gd").mount(node,model_id): return
 	match id:
+		"iron","clay","fiber":
+			for j in 3:
+				var blade:=id=="fiber"
+				part(node,"round",Vector3(j*0.16,0.15,j%2*0.1),Vector3(0.12,0.56,0.13) if blade else Vector3(0.45,0.34,0.42),{"fiber":"80aa60","iron":"646c78","clay":"ad7454"}[id])
 		"wood":
 			part(node,"round",Vector3(0,0.23,0),Vector3(1.15,0.55,0.55),"835a40")
 			part(node,"round",Vector3(0.5,0.23,0),Vector3(0.17,0.38,0.38),"d8aa76")
@@ -114,6 +118,21 @@ func spawn_resource(id: String, p: Vector2) -> void:
 				part(node,"box",v+Vector3.UP*0.2,Vector3(0.07,0.4,0.07),"598451")
 				part(node,"round",v+Vector3.UP*0.43,Vector3(0.35,0.23,0.35),"e99fb0")
 
+func attach_bed(i: int) -> void:
+	var p: Dictionary=plots[i]
+	var tile:=Vector2i(int(p.x),int(p.z))
+	var bed:=Node3D.new()
+	add_child(bed)
+	bed.position=Vector3(tile.x,0.055,tile.y)
+	beds.append(bed)
+	cell_index[tile]=i
+	draw_bed(i)
+
+func crop_for(seed_id: String) -> String:
+	for id in CROPS:
+		if CROPS[id][0]==seed_id: return id
+	return ""
+
 func draw_bed(i: int) -> void:
 	var bed := beds[i]
 	for child in bed.get_children():
@@ -122,16 +141,24 @@ func draw_bed(i: int) -> void:
 	var crop: Dictionary = plots[i]
 	var color := "b3ae77"
 	if crop.soil: color = "75543d" if crop.water else "a57c50"
-	part(bed,"box",Vector3.ZERO,Vector3(1.14,0.07,1.14),color)
+	part(bed,"box",Vector3.ZERO,Vector3(0.96,0.07,0.96),color)
 	if crop.soil:
 		for dx in [-0.32,0.0,0.32]:
 			part(bed,"box",Vector3(dx,0.045,0),Vector3(0.08,0.03,0.87),"624b38" if crop.water else "846140")
 	if crop.growth >= 0:
-		var k := 0.48+int(crop.growth)*0.27
-		for dx in [-0.17,0.17]:
-			part(bed,"round",Vector3(dx*k,0.22*k,0),Vector3(0.31,0.46,0.21)*k,"608a51").rotation.z = -signf(dx)*0.64
-		if crop.growth >= 2:
-			part(bed,"round",Vector3(0,0.18,0.13),Vector3(0.52,0.36,0.48),"f0dcac")
+		var id: String=crop.crop
+		var fraction:=float(crop.growth)/float(CROPS[id][1])
+		var k:=0.35+fraction*0.7
+		var tall:=id in ["tomato","wheat"]
+		var h:=0.65 if tall else 0.29
+		for j in (4 if id in ["berry","wheat"] else 2):
+			var a:=j*2.4
+			var base:=Vector3(cos(a)*0.2,0,sin(a)*0.2)
+			part(bed,"box",base+Vector3.UP*h*k/2,Vector3(.045,h*k,.045),"789652")
+			part(bed,"round",base+Vector3(.06,h*k*.7,0),Vector3(.2,.11,.12)*k,"85a95a")
+			if fraction>=0.55:
+				var size:Vector3={"turnip":Vector3(.33,.25,.32),"carrot":Vector3(.17,.29,.17),"potato":Vector3(.27,.15,.2),"wheat":Vector3(.09,.27,.1),"tomato":Vector3(.22,.2,.21),"berry":Vector3(.14,.17,.14)}[id]
+				part(bed,"round",base+Vector3.UP*h*k,size*k,CROPS[id][2])
 
 func refresh_resources() -> void:
 	for i in resources.size():
@@ -145,7 +172,7 @@ func advance(delta: float) -> bool:
 	for i in plots.size():
 		var plot: Dictionary = plots[i]
 		if plot.water:
-			plot.growth = mini(2,int(plot.growth)+1)
+			plot.growth = mini(int(CROPS[plot.crop][1]),int(plot.growth)+1)
 			plot.water = false
 			draw_bed(i)
 	for key in dormant.keys():
@@ -157,7 +184,8 @@ func find_target(pos: Vector3) -> void:
 	target = -1
 	var distance := 1.48*1.48
 	var best := Vector3.ZERO
-	for i in range(beds.size()+resources.size()):
+	aimed=Vector2i(roundi(pos.x),roundi(pos.z))
+	for i in range(beds.size(),beds.size()+resources.size()):
 		var node: Node3D = beds[i] if i < beds.size() else resources[i-beds.size()].node
 		if not node.visible: continue
 		var d := Vector2(pos.x-node.position.x,pos.z-node.position.z).length_squared()
@@ -165,51 +193,76 @@ func find_target(pos: Vector3) -> void:
 			target = i
 			distance = d
 			best = node.position
+	if cell_index.has(aimed):
+		target=int(cell_index[aimed])
+		best=beds[target].position
+	elif bag.tool()=="hoe" and room==-1 and house.world_grid.terrain_at(aimed)=="grass" and house.world_grid.reason(Rect2i(aimed,Vector2i.ONE))=="" and house.at(-1,aimed)<0:
+		target=beds.size()+resources.size()
+		best=Vector3(aimed.x,0.06,aimed.y)
 	marker.visible = target >= 0
 	marker.position = best+Vector3.UP*0.077
 
 func prompt() -> String:
 	if target < 0: return "Interagir"
+	if target==beds.size()+resources.size(): return "Preparar terra"
 	if target >= beds.size():
 		var id: String = resources[target-beds.size()].id
-		if REQUIRED.has(id) and bag.held() != REQUIRED[id]:
+		if REQUIRED.has(id) and bag.tool() != REQUIRED[id]:
 			return "Equipe "+str(Bag.NAMES[REQUIRED[id]])
 		return LABELS[id]
 	var p: Dictionary = plots[target]
-	if p.growth == 2: return "Colher nabo"
+	if bag.tool()=="shovel": return "Restaurar grama"
+	if p.growth>=0 and p.growth==CROPS[p.crop][1]: return "Colher "+str(Bag.NAMES[p.crop])
 	if not p.soil: return "Preparar terra" if bag.held()=="hoe" else "Equipe Enxada"
-	if p.growth < 0: return "Plantar" if bag.held()=="seed" else "Equipe Sementes"
+	if p.growth < 0: return "Plantar" if crop_for(bag.held())!="" else "Equipe Sementes"
 	if p.water: return "Já regado"
-	return "Regar" if bag.held()=="can" else "Equipe Regador"
+	return "Regar" if bag.tool()=="can" else "Equipe Regador"
 
 func interact() -> String:
 	if target < 0: return ""
+	if target==beds.size()+resources.size():
+		plots.append({"soil":true,"x":aimed.x,"z":aimed.y,"water":false,"crop":"turnip","growth":-1})
+		attach_bed(plots.size()-1)
+		bag.wear()
+		return "Terra preparada"
 	if target >= beds.size():
 		var i := target-beds.size()
 		var id: String = resources[i].id
 		if dormant.has(str(i)): return ""
-		if REQUIRED.has(id) and bag.held() != REQUIRED[id]: return prompt()
+		if REQUIRED.has(id) and bag.tool() != REQUIRED[id]: return prompt()
 		if not bag.add(id,1): return "Mochila cheia"
+		if REQUIRED.has(id): bag.wear()
 		settlement.count(id)
 		dormant[str(i)] = day+1
 		resources[i].node.hide()
 		return "+1 "+str(Bag.NAMES[id])
 	var p: Dictionary = plots[target]
 	var message := prompt()
-	if p.growth == 2:
+	if bag.tool()=="shovel":
+		beds[target].queue_free()
+		beds.remove_at(target)
+		plots.remove_at(target)
+		cell_index.erase(aimed)
+		for j in range(target,plots.size()): cell_index[Vector2i(int(plots[j].x),int(plots[j].z))]=j
+		bag.wear()
+		return "Grama restaurada"
+	if int(p.growth)==int(CROPS[p.crop][1]):
 		var before := bag.slots.duplicate(true)
-		if not bag.add("turnip",1) or not bag.add("seed",2):
+		if not bag.add(p.crop,1) or not bag.add(CROPS[p.crop][0],2):
 			bag.slots = before
-			return "Abra espaço para nabo e sementes"
+			return "Abra espaço para a colheita e as sementes"
 		settlement.count("harvest")
-		p.growth = -1
+		p.growth = int(CROPS[p.crop][1])-2 if p.crop in ["tomato","berry"] else -1
 		p.water = false
-		message = "+1 nabo · +2 sementes"
+		message = "+1 "+str(Bag.NAMES[p.crop])+" · +2 sementes"
 	elif not p.soil and bag.held()=="hoe": p.soil = true
-	elif p.soil and p.growth < 0 and bag.held()=="seed":
+	elif p.soil and p.growth < 0 and crop_for(bag.held())!="":
+		p.crop=crop_for(bag.held())
 		bag.use_one()
 		p.growth = 0
-	elif p.growth >= 0 and not p.water and bag.held()=="can": p.water = true
+	elif p.growth >= 0 and not p.water and bag.tool()=="can":
+		p.water=true
+		bag.wear()
 	else: return message
 	draw_bed(target)
 	return message
@@ -218,7 +271,7 @@ func save_progress(pos: Vector3) -> void:
 	if protect_existing:
 		save_failed=true
 		return
-	var data := {"version":2,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	var data := {"version":3,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	var f := FileAccess.open(save_path+".tmp",FileAccess.WRITE)
 	save_failed = true
 	if f == null: return
@@ -233,18 +286,21 @@ func load_progress() -> void:
 	if not FileAccess.file_exists(save_path): return
 	protect_existing=true
 	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
-	if not data is Dictionary or int(data.get("version",0)) not in [1,2]: return
+	if not data is Dictionary or int(data.get("version",0)) not in [1,2,3]: return
 	if not data.get("slots") is Array or data.slots.size() != Bag.SIZE: return
-	if not data.get("plots") is Array or data.plots.size() != beds.size(): return
+	if not data.get("plots") is Array: return
 	for item in data.slots:
 		if item != null and (not item is Dictionary or not Bag.NAMES.has(item.get("id")) or int(item.get("n",0)) < 1): return
 		if item != null: item.n = clampi(int(item.n),1,1 if item.id in Bag.TOOLS else Bag.STACK)
 	for p in data.plots:
 		if not p is Dictionary or not p.has_all(["soil","water","growth"]): return
-		p.growth = clampi(int(p.growth),-1,2)
+		p.crop=p.get("crop","turnip")
+		if not CROPS.has(p.crop): return
+		p.growth=clampi(int(p.growth),-1,int(CROPS[p.crop][1]))
 	if not data.get("pos") is Array or data.pos.size()!=2: return
-	if data.version==1 and not FileAccess.file_exists(save_path+".v1"):
-		if DirAccess.copy_absolute(save_path,save_path+".v1")!=OK:
+	var backup:=save_path+".v"+str(int(data.version))
+	if int(data.version)<3 and not FileAccess.file_exists(backup):
+		if DirAccess.copy_absolute(save_path,backup)!=OK:
 			save_failed=true
 			return
 	map_id=data.get("world",{}).get("id","starter_village")
@@ -263,7 +319,13 @@ func load_progress() -> void:
 	bag.selected = clampi(int(data.get("quick",0)),0,Bag.QUICK-1)
 	day = maxi(1,int(data.get("day",1)))
 	clock = clampf(float(data.get("clock",0)),0,DAY_SECONDS)
-	plots = data.plots
+	for i in data.plots.size():
+		var entry: Dictionary=data.plots[i]
+		if not entry.soil: continue
+		if not entry.has_all(["x","z"]):
+			entry.x=roundi(FIELD.x+i%4*1.25)
+			entry.z=roundi(FIELD.y+floori(i/4.0)*1.25)
+		plots.append(entry)
 	dormant = data.get("dormant",{})
 	for key in dormant: dormant[key] = int(dormant[key])
 	protect_existing=false

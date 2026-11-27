@@ -9,8 +9,8 @@ const PEOPLE := [
 	["Bento","stone",2,18,"946e57","O sereno faz os veios das pedras brilharem.","Achei uma pedra lisa. Cabe certinho na palma.","Organizo minhas pedras por lembrança, não por tamanho.","Essa pedrinha azul me lembra o dia em que você chegou."],
 	["Íris","turnip",1,24,"96778c","Abri meu caderno numa folha limpa. O que será que brota hoje?","Desenhei as folhas da horta antes que a luz mudasse.","À noite passo os esboços a limpo.","Quer ver meu caderno? Deixei uma página para a sua horta."]
 ]
-const BUY := {"seed":3,"axe":35,"pick":35,"hoe":30,"can":30,"wood":7,"stone":7,"twig":3,"fruit":8,"flower":6}
-const SELL := {"seed":1,"wood":4,"stone":4,"twig":1,"fruit":5,"flower":3,"turnip":12}
+const BUY := {"carrot_seed":4,"potato_seed":4,"wheat_seed":4,"tomato_seed":4,"berry_seed":4,"seed":3,"axe":35,"pick":35,"hoe":30,"can":30,"wood":7,"stone":7,"twig":3,"fruit":8,"flower":6}
+const SELL := {"carrot":15,"potato":20,"wheat":15,"tomato":25,"berry":20,"seed":1,"wood":4,"stone":4,"twig":1,"fruit":5,"flower":3,"turnip":12}
 var coins := 35
 var friends := {}
 

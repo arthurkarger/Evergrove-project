@@ -219,3 +219,16 @@ void fragment() {
 		foot_shadow.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(foot_shadow)
 	foot_shadow.position.y=offset+0.075
+
+var hand_prop: Node3D
+func use_tool(model: Node3D) -> void:
+	if is_instance_valid(hand_prop): hand_prop.queue_free()
+	hand_prop=model
+	arms[1].add_child(model)
+	model.position=Vector3(0,-0.3,0.12)
+	model.scale=Vector3.ONE*0.72
+	model.rotation.x=-1.6
+	var motion:=model.create_tween()
+	motion.tween_property(model,"rotation:x",0.6,0.18).set_trans(Tween.TRANS_SINE)
+	motion.tween_property(model,"rotation:x",-0.8,0.17)
+	motion.tween_callback(model.queue_free)

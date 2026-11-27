@@ -1,7 +1,7 @@
 extends RefCounted
 
-const NAMES := {"axe":"Machado","pick":"Picareta","hoe":"Enxada","can":"Regador","seed":"Sementes","wood":"Madeira","stone":"Pedra","twig":"Graveto","fruit":"Fruta","flower":"Flor","turnip":"Nabo"}
-const TOOLS := ["axe","pick","hoe","can"]
+const NAMES := {"axe":"Machado","pick":"Picareta","hoe":"Enxada","can":"Regador","seed":"Sementes","wood":"Madeira","stone":"Pedra","twig":"Graveto","fruit":"Fruta","flower":"Flor","turnip":"Nabo","fiber": "Fibra", "clay": "Argila", "iron": "Minério de ferro", "shovel": "Pá", "rod": "Vara de pesca", "carrot": "Cenoura", "carrot_seed": "Sementes de cenoura", "potato": "Batata", "potato_seed": "Sementes de batata", "wheat": "Trigo", "wheat_seed": "Sementes de trigo", "tomato": "Tomate", "tomato_seed": "Sementes de tomate", "berry": "Morango", "berry_seed": "Sementes de morango", "iron_axe": "Machado de ferro", "iron_pick": "Picareta de ferro", "iron_hoe": "Enxada de ferro", "iron_can": "Regador de ferro", "iron_shovel": "Pá de ferro", "iron_rod": "Vara de ferro"}
+const TOOLS := ["axe", "pick", "hoe", "can", "shovel", "rod", "iron_axe", "iron_pick", "iron_hoe", "iron_can", "iron_shovel", "iron_rod"]
 const SIZE := 24
 const QUICK := 6
 const STACK := 99
@@ -10,7 +10,7 @@ var selected := 0
 
 func _init() -> void:
 	slots.resize(SIZE)
-	for tool in TOOLS:
+	for tool in ["axe","pick","hoe","can"]:
 		add(tool,1)
 	add("seed",8)
 
@@ -41,6 +41,15 @@ func add(id: String, count: int) -> bool:
 
 func held() -> String:
 	return "" if slots[selected] == null else str(slots[selected].id)
+
+func tool() -> String:
+	return held().trim_prefix("iron_")
+
+func wear() -> void:
+	var item=slots[selected]
+	if item==null or item.id not in TOOLS: return
+	item.hp=int(item.get("hp",90 if held().begins_with("iron_") else 30))-1
+	if item.hp<=0: slots[selected]=null
 
 func use_one() -> void:
 	slots[selected].n -= 1

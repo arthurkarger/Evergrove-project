@@ -16,6 +16,9 @@ var remove: Button
 var rotate: Button
 var scroll := ScrollContainer.new()
 var candidate := ""
+var category:=0
+var recipe: String="hoe"
+var quantity:=1
 var chest := -1
 var page := ""
 var deposit := true
@@ -132,25 +135,17 @@ func draw() -> void:
 			link("Aparência","look")
 			if room==6 and not house.expanded:
 				button(options,"Ampliar a casa · 70 folhas",expand_room)
-		"catalog","craft":
-			title.text=("Construção externa" if room==-1 else "Decoração da casa") if page=="catalog" else "Oficina"
-			if page=="catalog": button(options,"Selecionar móvel colocado",build.bind(""))
+		"catalog":
+			title.text="Construção externa" if room==-1 else "Decoração da casa"
+			link("Oficina","craft")
+			link("Comunidade e serviços","home")
+			button(options,"Selecionar móvel colocado",build.bind(""))
 			for id in house.NAMES:
-				if page=="catalog" and room!=-1 and id in ["flower","shrub","lamp","fountain","tree","shop","house"]: continue
-				var line: String=house.NAMES[id]+"  ×"+str(int(house.stock.get(id,0)))
-				if page=="catalog":
-					button(options,line,build.bind(id)).disabled=int(house.stock.get(id,0))==0
-				else:
-					var costs := PackedStringArray()
-					for k in house.RECIPES[id]:
-						costs.append("%d %s" % [house.RECIPES[id][k],bag.NAMES[k]])
-					var craft_button := button(options,line+"   ·   "+", ".join(costs),craft.bind(id))
-					var enough := true
-					for k in house.RECIPES[id]:
-						if bag.quantity(k)<int(house.RECIPES[id][k]): enough=false
-					craft_button.disabled=not enough
-			if page=="catalog": button(options,"Voltar à planta",build.bind(""))
-			else: link("Voltar","home")
+				if room!=-1 and id in ["flower","shrub","lamp","fountain","tree","shop","house"]: continue
+				button(options,house.NAMES[id]+" ×"+str(house.stock.get(id,0)),build.bind(id)).disabled=int(house.stock.get(id,0))==0
+			button(options,"Voltar à planta",build.bind(""))
+		"craft","benchcraft":
+			draw_workshop()
 		"settlement":
 			settlement_board()
 		"resident":
@@ -158,7 +153,10 @@ func draw() -> void:
 		"shipping":
 			title.text="Caixa de remessas"
 			note.text="Venda sua coleta para financiar a primeira construção."
-			button(options,"Comprar sementes · 3 folhas",buy_seed).disabled=world.life.social.coins<3
+			for crop in world.life.CROPS.values():
+				var seed_id: String=crop[0]
+				var price: int=world.life.social.BUY[seed_id]
+				button(options,bag.NAMES[seed_id]+" · %d folhas" % price,buy_seed.bind(seed_id)).disabled=world.life.social.coins<price
 			for id in world.life.social.SELL:
 				var qty: int=bag.quantity(id)
 				if qty>0: button(options,"%s ×%d · vender 1 por %d" % [bag.NAMES[id],qty,world.life.social.SELL[id]],sell.bind(id))
@@ -186,13 +184,87 @@ func draw() -> void:
 				button(options,"%s · %s ×%d" % ["Guardar" if deposit else "Retirar",bag.NAMES[slots[i].id],int(slots[i].n)],transfer.bind(i))
 			if count==0: note.text="Mochila vazia" if deposit else "Baú vazio"
 
-func craft(id: String) -> void:
-	if world.life.house.craft(id,world.life.bag):
-		if id in ["bench","table","chest","arch"]: world.life.settlement.count("furniture")
-		note.text="Fabricado · "+str(world.life.house.NAMES[id])
-		world.save_game()
-	else: note.text="Faltam materiais."
+func select_recipe(id: String) -> void:
+	recipe=id
+	note.text=""
 	draw()
+
+func pick_category(i: int) -> void:
+	category=i
+	note.text=""
+	recipe=["hoe","bench","iron_hoe"][i]
+	draw()
+
+func set_batch(n: int) -> void:
+	quantity=n
+	draw()
+
+func draw_workshop() -> void:
+	var house=world.life.house
+	var bag=world.life.bag
+	title.text="Bancada" if page=="benchcraft" else "Oficina"
+	var tabs:=HBoxContainer.new()
+	options.add_child(tabs)
+	for i in 3: button(tabs,["Ferramentas","Objetos","Ferro"][i],pick_category.bind(i)).disabled=category==i
+	var view:=SubViewport.new()
+	view.name="RecipePreview"
+	view.size=Vector2i(240,100)
+	view.own_world_3d=true
+	view.transparent_bg=true
+	view.render_target_update_mode=SubViewport.UPDATE_ONCE
+	var preview:=TextureRect.new()
+	preview.custom_minimum_size.y=78
+	preview.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	preview.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	options.add_child(preview)
+	preview.add_child(view)
+	preview.texture=view.get_texture()
+	var model: Node3D=site.model(recipe,false)
+	view.add_child(model)
+	var cam:=Camera3D.new()
+	view.add_child(cam)
+	var scale_factor:=2.6 if recipe in ["house","shop","fountain"] else 1.0
+	cam.position=Vector3(1.4,1.25,2.1)*scale_factor
+	cam.look_at(Vector3.UP*.43*scale_factor)
+	var light:=DirectionalLight3D.new()
+	view.add_child(light)
+	light.rotation_degrees=Vector3(-48,-28,0)
+	var needs:=PackedStringArray()
+	for k in house.RECIPES[recipe]:
+		needs.append("%s %d/%d" % [bag.NAMES[k],bag.quantity(k),house.RECIPES[recipe][k]*quantity])
+	var label_text:String=bag.NAMES.get(recipe,house.NAMES.get(recipe,""))
+	var batch:=HBoxContainer.new()
+	options.add_child(batch)
+	for n in [1,5,10]: button(batch,"×%d" % n,set_batch.bind(n)).disabled=n==quantity
+	var action:=button(options,"Fabricar "+label_text+" · "+", ".join(needs),craft.bind(recipe))
+	if category==2 and (house.made<5 or page!="benchcraft"):
+		action.disabled=true
+		note.text="Use uma bancada após fabricar 5 itens (%d/5)." % mini(5,house.made)
+	for id: String in house.RECIPES:
+		var group:=2 if id.begins_with("iron_") else (0 if id in bag.TOOLS else 1)
+		if group!=category: continue
+		var choice:=button(options,bag.NAMES.get(id,house.NAMES.get(id,"")),select_recipe.bind(id))
+		choice.icon=world.hud.icon_for(id if id in bag.TOOLS else str(house.RECIPES[id].keys()[0]))
+	link("Voltar","catalog")
+
+func craft(id: String) -> void:
+	if world.life.house.craft(id,world.life.bag,quantity,page=="benchcraft"):
+		if id in ["bench","table","chest","arch"]:
+			for i in quantity: world.life.settlement.count("furniture")
+		world.save_game()
+		note.text="Fabricado ×%d" % quantity
+		var preview:=options.find_child("RecipePreview",true,false) as SubViewport
+		if preview:
+			var display:=preview.get_child(0) as Node3D
+			preview.render_target_update_mode=SubViewport.UPDATE_ALWAYS
+			var motion:=display.create_tween()
+			motion.tween_property(display,"rotation:y",0.7,0.22)
+			motion.parallel().tween_property(display,"position:y",0.16,0.12)
+			motion.tween_property(display,"position:y",0.0,0.13)
+			motion.tween_callback(draw)
+		note.modulate.a=0.15
+		note.create_tween().tween_property(note,"modulate:a",1.0,0.35)
+	else: note.text="Confira os materiais e o espaço na mochila."
 
 func expand_room() -> void:
 	if world.life.house.expand(world.life.social):
@@ -413,8 +485,8 @@ func collect(item: String) -> void:
 	world.save_game()
 	draw()
 
-func buy_seed() -> void:
-	var result: String=world.life.social.trade(world.life.bag,"seed",true)
+func buy_seed(id: String="seed") -> void:
+	var result: String=world.life.social.trade(world.life.bag,id,true)
 	world.save_game()
 	draw()
 	note.text=result

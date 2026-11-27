@@ -5,17 +5,19 @@ const Grid = preload("res://world_grid.gd")
 const Starter = preload("res://starter_layout.gd")
 var world_grid = Starter.new_grid()
 const DOOR := Vector2(-7,21.65)
-const NAMES := {"house":"Terreno residencial","shop":"Terreno comercial","tree":"Árvore","path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão","flower":"Canteiro","shrub":"Arbusto","lamp":"Poste","fountain":"Fonte"}
-const RECIPES := {"house":{"twig":2},"shop":{"twig":3},"tree":{"fruit":1,"twig":2},"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2},"flower":{"flower":2},"shrub":{"twig":3,"flower":1},"lamp":{"wood":2,"stone":2},"fountain":{"stone":6,"wood":1}}
+const NAMES := {"workbench":"Bancada","house":"Terreno residencial","shop":"Terreno comercial","tree":"Árvore","path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão","flower":"Canteiro","shrub":"Arbusto","lamp":"Poste","fountain":"Fonte"}
+const RECIPES := {"axe": {"twig": 2, "stone": 2}, "pick": {"twig": 3, "fiber": 2}, "hoe": {"twig": 2, "stone": 1}, "can": {"clay": 2, "fiber": 1}, "shovel": {"twig": 2, "stone": 2}, "rod": {"twig": 3, "fiber": 2}, "iron_axe": {"axe": 1, "iron": 3, "wood": 2}, "iron_pick": {"pick": 1, "iron": 3, "wood": 2}, "iron_hoe": {"hoe": 1, "iron": 3, "wood": 2}, "iron_can": {"can": 1, "iron": 3, "wood": 2}, "iron_shovel": {"shovel": 1, "iron": 3, "wood": 2}, "iron_rod": {"rod": 1, "iron": 3, "wood": 2}, "workbench": {"wood": 4, "stone": 2},"house":{"twig":2},"shop":{"twig":3},"tree":{"fruit":1,"twig":2},"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2},"flower":{"flower":2},"shrub":{"twig":3,"flower":1},"lamp":{"wood":2,"stone":2},"fountain":{"stone":6,"wood":1}}
 var stock := {"bench":1,"chest":1,"path":3}
 var objects: Array = []
+var made:=0
 var expanded := false
 var look := [0,0,0,0]
 
 func pack() -> Dictionary:
-	return {"stock":stock,"objects":objects,"expanded":expanded,"look":look,"grid_schema":2}
+	return {"made":made,"stock":stock,"objects":objects,"expanded":expanded,"look":look,"grid_schema":2}
 
 func restore(d: Dictionary) -> void:
+	made=int(d.get("made",0))
 	stock=d.get("stock",stock)
 	objects=d.get("objects",[])
 	expanded=d.get("expanded",false)
@@ -81,11 +83,19 @@ func remove_object(i: int) -> bool:
 	objects.remove_at(i)
 	return true
 
-func craft(id: String,bag) -> bool:
+func craft(id: String,bag,count:=1,bench:=false) -> bool:
+	if count<1 or not RECIPES.has(id): return false
+	if id.begins_with("iron_") and (made<5 or not bench): return false
 	for k in RECIPES[id]:
-		if bag.quantity(k)<RECIPES[id][k]: return false
-	for k in RECIPES[id]: bag.remove_items(k,RECIPES[id][k])
-	stock[id]=int(stock.get(id,0))+1
+		if bag.quantity(k)<RECIPES[id][k]*count: return false
+	var before:Array=bag.slots.duplicate(true)
+	for k in RECIPES[id]: bag.remove_items(k,RECIPES[id][k]*count)
+	if id in Bag.TOOLS:
+		if not bag.add(id,count):
+			bag.slots=before
+			return false
+	else: stock[id]=int(stock.get(id,0))+count
+	made+=count
 	return true
 
 func transfer(index: int,bag,slot: int,deposit: bool) -> bool:
@@ -94,6 +104,12 @@ func transfer(index: int,bag,slot: int,deposit: bool) -> bool:
 	var source = bag if deposit else vault
 	var dest = vault if deposit else bag
 	var item = source.slots[slot]
+	if item!=null and item.id in Bag.TOOLS:
+		var empty:int=dest.slots.find(null)
+		if empty<0: return false
+		dest.slots[empty]=item
+		source.slots[slot]=null
+		return true
 	if item==null or not dest.add(item.id,int(item.n)): return false
 	source.slots[slot]=null
 	return true

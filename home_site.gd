@@ -84,7 +84,24 @@ func base(room: int) -> Vector3:
 func model(id: String,preview: bool,completed := false) -> Node3D:
 	var node := Node3D.new()
 	var t=world.town
+	if id in world.life.bag.TOOLS:
+		var base_id:=id.trim_prefix("iron_")
+		var metal:="#718b92" if id.begins_with("iron_") else "#979993"
+		var length:=1.3 if base_id=="rod" else 0.75
+		t.furnish(node,Vector3.UP*length/2,Vector3(.07,length,.075),"9e704c")
+		match base_id:
+			"axe","shovel": rounded(node,Vector3(.06,length,0),Vector3(.31,.27,.09),metal)
+			"hoe","pick": t.furnish(node,Vector3(0,length,0),Vector3(.43,.09,.13),metal)
+			"can":
+				rounded(node,Vector3.UP*.32,Vector3(.44,.43,.4),metal,true)
+				t.furnish(node,Vector3(.25,.38,0),Vector3(.26,.09,.1),metal)
+			"rod": t.furnish(node,Vector3(.045,.94,0),Vector3(.014,.68,.014),"b8c1ae")
+		return node
 	match id:
+		"workbench":
+			preload("res://blender_models.gd").mount(node,"table")
+			t.furnish(node,Vector3.UP*.65,Vector3(.98,.13,.78),"bd8c58",not preview)
+			t.furnish(node,Vector3(.25,.78,-.16),Vector3(.23,.15,.19),"667976")
 		"house","shop":
 			var width:=5.0 if id=="shop" else 4.2
 			if completed:

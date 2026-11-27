@@ -1,9 +1,10 @@
 extends RefCounted
 # Map-independent 1-unit cells, centered on integer X/Z. No scene references.
-const FOOTPRINTS := {"path":Vector2i(1,1),"fence":Vector2i(2,1),"bench":Vector2i(2,1),"table":Vector2i(1,1),"chest":Vector2i(1,1),"arch":Vector2i(2,2),"flower":Vector2i(1,1),"shrub":Vector2i(1,1),"lamp":Vector2i(1,1),"tree":Vector2i(2,2),"fountain":Vector2i(3,3),"house":Vector2i(5,4),"shop":Vector2i(6,5)}
+const FOOTPRINTS := {"workbench":Vector2i(1,1),"path":Vector2i(1,1),"fence":Vector2i(2,1),"bench":Vector2i(2,1),"table":Vector2i(1,1),"chest":Vector2i(1,1),"arch":Vector2i(2,2),"flower":Vector2i(1,1),"shrub":Vector2i(1,1),"lamp":Vector2i(1,1),"tree":Vector2i(2,2),"fountain":Vector2i(3,3),"house":Vector2i(5,4),"shop":Vector2i(6,5)}
 var bounds: Rect2i
 var map_id: String
 var seed_value: int
+var cultivated := {}
 var reserved := {}
 var terrain_provider: Callable
 
@@ -56,5 +57,6 @@ func reason(box: Rect2i) -> String:
 	for x in range(box.position.x,box.end.x):
 		for z in range(box.position.y,box.end.y):
 			var tile := Vector2i(x,z)
+			if cultivated.has(tile): return "Solo cultivado"
 			if reserved.has(tile): return str(reserved[tile])
 	return ""

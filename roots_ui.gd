@@ -231,6 +231,8 @@ func refresh() -> void:
 			count.text = str(int(item.n)) if item != null and item.n > 1 else ""
 			empty.text = str(i+1) if item == null and i < Bag.QUICK else ""
 			b.tooltip_text = "Vazio" if item == null else Bag.NAMES[item.id]
+			if item!=null and item.id in Bag.TOOLS:
+				b.tooltip_text+=" · %d usos" % item.get("hp",90 if str(item.id).begins_with("iron_") else 30)
 			var chosen: bool = i == source if shade.visible else i == bag.selected
 			b.self_modulate = Color.WHITE
 			b.add_theme_stylebox_override("normal",Style.box(Color("dae9bb") if chosen else Color("f4e7cb"),Color("779958") if chosen else Color("d8c59d"),14,5,2 if chosen else 1))
@@ -239,6 +241,7 @@ func refresh() -> void:
 	for item in bag.slots:
 		if item != null: used+=1
 	held_label.text = "%d / 24 espaços  ·  Equipado: %s" % [used,"Nenhum" if bag.held().is_empty() else Bag.NAMES[bag.held()]]
+	if bag.held() in Bag.TOOLS: held_label.text+=" · %d usos" % bag.slots[bag.selected].get("hp",90 if bag.held().begins_with("iron_") else 30)
 
 func show_note(message: String) -> void:
 	note.text = message

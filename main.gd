@@ -145,7 +145,7 @@ func _ready():
 	update_world_ui()
 	if not FileAccess.file_exists(life.save_path):
 		save_game()
-		hud.show_note("Horta a leste · equipe a enxada")
+		hud.show_note("Equipe a enxada sobre a grama")
 
 func prepare_lot_room(room: int) -> void:
 	if room in [7,8] and not lot_rooms.has(room):
@@ -159,13 +159,12 @@ func configure_world_grid() -> void:
 		grid.reserve_box(Vector2(0,6),Vector2(2,2),"Chegada")
 		grid.reserve_box(Vector2(0,1),Vector2(8,4),"Acampamento dos visitantes")
 	# Resources, entrances and NPC travel graph share the same occupancy contract.
-	for bed in life.beds:
-		grid.reserve_box(Vector2(bed.position.x,bed.position.z),Vector2(1.15,1.15),"Horta")
+	grid.cultivated=life.cell_index
 	for resource in life.resources:
 		var p: Vector3=resource.node.position
 		if village.landscape:
 			var cell:=Vector2i(roundi(p.x),roundi(p.z))
-			while grid.reserved.has(cell) or village.landscape.original_water_cells.has(cell) or life.house.at(-1,cell)>=0:
+			while grid.cultivated.has(cell) or grid.reserved.has(cell) or village.landscape.original_water_cells.has(cell) or life.house.at(-1,cell)>=0:
 				cell.x=wrapi(cell.x+1,-29,30)
 			resource.node.position=Vector3(cell.x,p.y,cell.y)
 			p=resource.node.position
@@ -226,6 +225,7 @@ func close_social() -> void:
 func interact_focus() -> void:
 	match focus_kind:
 		"settler": home_ui.meet(focus_resident)
+		"workbench": home_ui.open("benchcraft")
 		"chest": home_ui.open_chest(focus_index)
 		"bed":
 			life.advance(life.DAY_SECONDS-life.clock)
@@ -271,7 +271,9 @@ func use_item() -> void:
 	hud.build_button.visible=life.room in [-1,6] and not hud.shade.visible
 	life.find_target(player.position)
 	if life.target < 0: return
+	var tool_id:=life.bag.held()
 	var message := life.interact()
+	if tool_id in life.bag.TOOLS: character.use_tool(site.model(tool_id,true))
 	hud.show_note(message)
 	hud.refresh()
 	save_game()
@@ -378,13 +380,13 @@ func update_world_ui() -> void:
 		var local:=site.player_flat()
 		for i in life.house.objects.size():
 			var obj: Dictionary=life.house.objects[i]
-			if obj.room!=life.room or obj.id!="chest": continue
+			if obj.room!=life.room or obj.id not in ["chest","workbench"]: continue
 			var d:=local.distance_to(Vector2(obj.x,obj.z))
 			if d<best:
 				best=d
 				focus_index=i
-				focus_kind="chest"
-				hud.action.text="Abrir baú"
+				focus_kind=obj.id
+				hud.action.text="Usar bancada" if obj.id=="workbench" else "Abrir baú"
 	if focus_kind!="":
 		hud.action.disabled = false
 		life.marker.hide()

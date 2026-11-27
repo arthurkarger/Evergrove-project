@@ -96,5 +96,44 @@ func run() -> void:
 	root.add_child(copy)
 	verify(copy.life.room==6 and copy.player.position.distance_to(w.player.position)<0.05 and copy.life.house.expanded,"reload expanded room")
 	verify(copy.life.house.objects[0].slots[0].id=="seed" and copy.life.house.objects[1].r==1 and copy.life.house.look[0]==1 and copy.life.house.look[2]==1,"reload storage layout and outfit")
+	check_farming(copy)
 	print("Home integration failures: ",errors)
 	quit(1 if errors else 0)
+
+func check_farming(w) -> void:
+	var life=w.life
+	life.room=-1
+	var bag=life.bag
+	var cell:=Vector2i(4,20)
+	var pos:=Vector3(cell.x,.51,cell.y)
+	bag.selected=2
+	life.find_target(pos)
+	verify(life.interact()=="Terra preparada","Hoe prepares free cell")
+	verify(not life.house.valid(-1,"path",cell,0,-1,Vector2.ZERO),"Crop reserves footprint")
+	bag.add("tomato_seed",1)
+	for i in bag.slots.size():
+		if bag.slots[i]!=null and bag.slots[i].id=="tomato_seed": bag.selected=i
+	life.find_target(pos)
+	life.interact()
+	var plot: Dictionary=life.plots.back()
+	verify(plot.crop=="tomato","Seed species stored")
+	bag.selected=3
+	for day in 5:
+		life.find_target(pos)
+		life.interact()
+		life.advance(life.DAY_SECONDS)
+	life.interact()
+	verify(bag.quantity("tomato")==1 and plot.growth==3,"Watered tomato harvest and regrowth")
+	life.save_progress(pos)
+	var resumed=preload("res://main.tscn").instantiate()
+	root.add_child(resumed)
+	verify(resumed.life.plots.back().crop=="tomato" and resumed.life.plots.back().growth==3,"Persist individual plot")
+	resumed.free()
+	bag.add("twig",10)
+	bag.add("stone",8)
+	verify(life.house.craft("shovel",bag,2) and bag.quantity("shovel")==2,"Batch tools")
+	for i in bag.slots.size():
+		if bag.slots[i]!=null and bag.slots[i].id=="shovel": bag.selected=i
+	life.find_target(pos)
+	life.interact()
+	verify(not life.cell_index.has(cell) and bag.slots[bag.selected].hp==29,"Restore grass and wear shovel")
