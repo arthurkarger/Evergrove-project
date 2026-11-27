@@ -1,5 +1,6 @@
 extends Node3D
 
+const BlenderModels = preload("res://blender_models.gd")
 const LIMIT_X := 30
 const LIMIT_Z := 23
 const WOOD := "906744"
@@ -7,6 +8,9 @@ const TRAIL := "d2b58e"
 
 var meshes := {}
 var batches := {}
+var imported_groups: Dictionary = {}
+var blender_batches: Array[MultiMeshInstance3D] = []
+var imported_counts: Dictionary = {}
 var grass_batches: Array[MultiMeshInstance3D] = []
 var world_materials: Array[ShaderMaterial] = []
 var scenic_material: StandardMaterial3D
@@ -58,6 +62,7 @@ func _ready() -> void:
 	plant_grass()
 	build_lamps()
 	flush_batches()
+	flush_imported()
 	setup_lake_probe()
 
 # Share primitive geometry and draw repeated scenery in spatial batches.
@@ -67,6 +72,36 @@ func piece(kind: String, position_3d: Vector3, size: Vector3, tint: String, angl
 		batches[key] = []
 	var basis := Basis(Vector3.UP, angle) * Basis.from_scale(size)
 	batches[key].append([Transform3D(basis, position_3d), Color(tint)])
+
+# Keep imported scenery spatially batched just like the procedural geometry.
+func imported_model(name: String, pos: Vector3, size: Vector3) -> bool:
+	var parts := BlenderModels.parts(name)
+	if parts.is_empty():
+		return false
+	var key := "%s:%d:%d" % [name, floori(pos.x/16), floori(pos.z/16)]
+	if not imported_groups.has(key):
+		imported_groups[key] = {"parts": parts, "transforms": []}
+	imported_groups[key]["transforms"].append(Transform3D(Basis.from_scale(size), pos))
+	imported_counts[name] = int(imported_counts.get(name, 0)) + 1
+	return true
+
+func flush_imported() -> void:
+	for group in imported_groups.values():
+		var transforms: Array = group["transforms"]
+		for part in group["parts"]:
+			var mm := MultiMesh.new()
+			mm.transform_format = MultiMesh.TRANSFORM_3D
+			mm.mesh = part[0] as Mesh
+			mm.instance_count = transforms.size()
+			var local: Transform3D = part[1]
+			for i in transforms.size():
+				var placement: Transform3D = transforms[i]
+				mm.set_instance_transform(i, placement * local)
+			var instance := MultiMeshInstance3D.new()
+			instance.multimesh = mm
+			add_child(instance)
+			blender_batches.append(instance)
+	imported_groups.clear()
 
 func landscape_material(water: bool) -> ShaderMaterial:
 	var shader := Shader.new()
@@ -293,8 +328,10 @@ func cottage(x: float,z: float,roof: String,plaster: String) -> void:
 	house_centers.append(Vector2(x,z))
 	var center := Vector3(x,1.22,z)
 	contact_at(Vector2(x,z),Vector2(6.1,5.0),0.065)
-	piece("box",center,Vector3(4.4,2.44,3.4),plaster)
 	wall(center,Vector3(4.4,2.44,3.4))
+	if imported_model("house_"+roof,Vector3(x,0,z),Vector3(4.4/3.0,1.20,3.4/2.3)):
+		return
+	piece("box",center,Vector3(4.4,2.44,3.4),plaster)
 	piece("box",Vector3(x,0.19,z),Vector3(4.5,0.38,3.5),"988874")
 	piece("roof_tiles",Vector3(x,3.13,z),Vector3(5.15,1.55,4.15),roof)
 	# Rounded eaves and timber trim add a handcrafted silhouette.
@@ -330,6 +367,9 @@ func fence(a: Vector2,b: Vector2) -> void:
 
 func bench(x: float,z: float) -> void:
 	contact_at(Vector2(x,z),Vector2(2.7,1.45),0.062)
+	wall(Vector3(x,0.48,z),Vector3(2,0.96,0.65))
+	if imported_model("bench",Vector3(x,0,z),Vector3(1.16,0.96,1.0)):
+		return
 	for dx in [-0.7,0.7]:
 		piece("box",Vector3(x+dx,0.27,z),Vector3(0.21,0.54,0.58),WOOD)
 	for j in 4:
@@ -338,7 +378,6 @@ func bench(x: float,z: float) -> void:
 		piece("box",Vector3(x,0.80+j*0.21,z-0.28),Vector3(2,0.17,0.12),"a77b52")
 	for dx in [-0.83,0.83]:
 		piece("round",Vector3(x+dx,0.71,z),Vector3(0.20,0.18,0.60),WOOD)
-	wall(Vector3(x,0.48,z),Vector3(2,0.96,0.65))
 
 func build_lake() -> void:
 	var x := 22.0
@@ -369,9 +408,13 @@ func build_lake() -> void:
 func tree(x: float,z: float,s: float,kind: int) -> void:
 	var base := Vector3(x,0,z)
 	contact_at(Vector2(x,z),Vector2(2.6,2.4)*s,0.058)
+	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
+	var model: String = ["tree","pine","fruit_tree"][kind]
+	var model_scale := Vector3.ONE if kind==1 else Vector3(1.40,1.39,1.40)
+	if imported_model(model,base,model_scale*s):
+		return
 	piece("bark",base+Vector3.UP*s,Vector3(0.72,2,0.72)*s,WOOD)
 	piece("round",base+Vector3.UP*0.14*s,Vector3(0.95,0.29,0.85)*s,WOOD)
-	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
 	if kind == 1:
 		for i in 3:
 			var w := 2.9-i*0.61
@@ -538,6 +581,8 @@ func build_lamps() -> void:
 
 func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)
+	for batch in blender_batches:
+		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level>=2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var density := [0.0,0.25,0.55,1.0]
 	for batch in contact_batches: batch.visible = quality_level>=1
 	for batch in foliage_batches:

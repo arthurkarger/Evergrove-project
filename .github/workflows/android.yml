@@ -3,7 +3,6 @@ on:
   workflow_dispatch:
   push:
     paths-ignore:
-      - 'tools/**'
       - '.github/workflows/blender-assets.yml'
 concurrency:
   group: android-apk-${{ github.ref }}
@@ -46,9 +45,26 @@ jobs:
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+      - name: Generate Blender game models
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets
+          for model in house_628693 house_946e57 house_96778c house_577453 house_b76349 house_597e80 house_84905d tree pine fruit_tree bench character_head character_torso character_limb character_shoe character_hair; do
+            test -s "assets/models/generated/$model.glb"
+          done
       - name: Import project
         shell: bash
         run: godot --headless --editor --path . --import
+      - name: Verify imported Blender models are used in game
+        shell: bash
+        run: |
+          set -euo pipefail
+          godot --headless --path . --script res://tests/blender_models.gd 2>&1 | tee "$RUNNER_TEMP/blender-models.log"
+          grep -Fx 'Blender model integration failures: 0' "$RUNNER_TEMP/blender-models.log"
+          if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/blender-models.log"; then exit 1; fi
       - name: Check village startup
         shell: bash
         run: |

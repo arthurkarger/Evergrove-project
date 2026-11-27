@@ -1,3 +1,6 @@
 .godot/
 build/
 *.apk
+
+assets/models/generated/
+blender-output/

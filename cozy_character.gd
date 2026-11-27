@@ -1,4 +1,5 @@
 extends Node3D
+const BlenderModels = preload("res://blender_models.gd")
 # Original stylized, textured characters. The mesh is shared across all villagers.
 static var ball: SphereMesh
 static var textures: Dictionary = {}
@@ -65,7 +66,8 @@ func shape(parent: Node3D, label: String, pos: Vector3, size: Vector3, tint: Col
 		ball.rings = [4,6,8,12][quality_level]
 	var part := MeshInstance3D.new()
 	part.name = label
-	part.mesh = ball
+	var imported := BlenderModels.character_mesh(label)
+	part.mesh = imported if imported != null else ball
 	var is_hair := label in ["Hair cap","Back hair","Side lock","Fringe","Bun"]
 	part.material_override = finish_material(tint,cloth,is_hair)
 	part.position = pos

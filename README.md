@@ -19,3 +19,6 @@ Na planta da casa ou do quintal, toque para escolher um quadrado e arraste para 
 
 ## Android
 Abra a aba Actions, selecione Android APK e baixe o artefato Evergrove-Android após uma compilação bem-sucedida. Extraia o ZIP e instale o APK de depuração. O protótipo ainda não foi validado em aparelho real.
+
+## Modelos 3D do Blender
+O workflow Android APK gera os GLBs em `assets/models/generated/` antes da importação do Godot. O Blender não é necessário no dispositivo. Casas da vila (sete paletas), árvores comuns, pinheiros, árvores frutíferas e bancos usam malhas importadas, agrupadas espacialmente via MultiMesh. Personagens usam malhas Blender para cabeça, tronco, membros, sapatos e cabelo, mantendo materiais personalizáveis e animação procedural existente. Colisões e salvamentos continuam independentes das malhas. Móveis construídos, interiores e outros objetos ainda usam os modelos anteriores. Sem GLBs, a versão de desenvolvimento local conserva a geometria procedural como fallback. Para gerar localmente, execute `blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets` antes da importação do Godot. O workflow separado Blender - Generate Evergrove Assets continua gerando as prévias PNG dos três modelos de demonstração.
