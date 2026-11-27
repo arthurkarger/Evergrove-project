@@ -1,4 +1,5 @@
 extends Node3D
+const Saves = preload("res://world_saves.gd")
 const Village = preload("res://village.gd")
 const GraphicsMenu = preload("res://graphics_menu.gd")
 const AUDIO_PATH := "user://audio.cfg"
@@ -166,6 +167,7 @@ func build_interface() -> void:
 	spacer.custom_minimum_size.y=14
 	menu.add_child(spacer)
 	play_button=button(menu,"Jogar",choose_world,true)
+	if FileAccess.file_exists(Saves.PRIMARY): button(menu,"Mundos",show_maps)
 	options_button=button(menu,"Opções",show_options)
 	pages.add_child(maps)
 	maps.hide()
@@ -174,12 +176,15 @@ func build_interface() -> void:
 	cards.columns=2
 	maps.add_child(cards)
 	var layouts = preload("res://natural_maps.gd")
+	var primary_map:=Saves.primary_id()
 	for id in layouts.MAPS:
 		var data: Array=layouts.MAPS[id]
-		var card := button(cards,data[0],select_world.bind(id))
+		var exists: bool=FileAccess.file_exists(Saves.slot(id)) or primary_map==id
+		var card := button(cards,str(data[0])+(" · continuar" if exists else ""),select_world.bind(id))
 		card.icon=layouts.new(id,data[1]).thumbnail()
 		card.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
 		card.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	if primary_map=="starter_village": button(maps,"Vila original · continuar",select_world.bind(primary_map))
 	button(maps,"Voltar",show_menu)
 	pages.add_child(options)
 	options.add_theme_constant_override("separation",7)
@@ -317,14 +322,18 @@ func add_note(buffer: PackedFloat32Array, rate: int, start: int, note: int, dura
 		buffer[idx]+=sample
 
 func choose_world() -> void:
-	if FileAccess.file_exists(preload("res://homestead.gd").SAVE):
+	if FileAccess.file_exists(Saves.active()):
 		start_game()
 	else:
-		menu.hide()
-		maps.show()
+		show_maps()
+
+func show_maps() -> void:
+	menu.hide()
+	maps.show()
 
 func select_world(id: String) -> void:
-	get_tree().set_meta("evergrove_map",id)
+	if leaving or not Saves.select(id): return
+	if not FileAccess.file_exists(Saves.active()): get_tree().set_meta("evergrove_map",id)
 	start_game()
 
 func start_game() -> void:

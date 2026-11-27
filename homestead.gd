@@ -2,7 +2,10 @@ extends Node3D
 
 const Bag = preload("res://backpack.gd")
 const DAY_SECONDS := 180.0
-const SAVE := "user://homestead-v1.json"
+const Saves = preload("res://world_saves.gd")
+const SAVE := Saves.PRIMARY
+var save_path := Saves.active()
+var lot_exit: Array = []
 const FIELD := Vector2(3.1,4.6)
 const LABELS := {"wood":"Cortar tronco","stone":"Quebrar rocha","twig":"Pegar graveto","fruit":"Pegar fruta","flower":"Colher flor"}
 const REQUIRED := {"wood":"axe","stone":"pick"}
@@ -213,8 +216,8 @@ func save_progress(pos: Vector3) -> void:
 	if protect_existing:
 		save_failed=true
 		return
-	var data := {"version":2,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
-	var f := FileAccess.open(SAVE+".tmp",FileAccess.WRITE)
+	var data := {"version":2,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	var f := FileAccess.open(save_path+".tmp",FileAccess.WRITE)
 	save_failed = true
 	if f == null: return
 	f.store_string(JSON.stringify(data))
@@ -222,12 +225,12 @@ func save_progress(pos: Vector3) -> void:
 	var result := f.get_error()
 	f.close()
 	if result == OK:
-		save_failed = DirAccess.rename_absolute(SAVE+".tmp",SAVE) != OK
+		save_failed = DirAccess.rename_absolute(save_path+".tmp",save_path) != OK
 
 func load_progress() -> void:
-	if not FileAccess.file_exists(SAVE): return
+	if not FileAccess.file_exists(save_path): return
 	protect_existing=true
-	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
+	var data = JSON.parse_string(FileAccess.get_file_as_string(save_path))
 	if not data is Dictionary or int(data.get("version",0)) not in [1,2]: return
 	if not data.get("slots") is Array or data.slots.size() != Bag.SIZE: return
 	if not data.get("plots") is Array or data.plots.size() != beds.size(): return
@@ -238,8 +241,8 @@ func load_progress() -> void:
 		if not p is Dictionary or not p.has_all(["soil","water","growth"]): return
 		p.growth = clampi(int(p.growth),-1,2)
 	if not data.get("pos") is Array or data.pos.size()!=2: return
-	if data.version==1 and not FileAccess.file_exists(SAVE+".v1"):
-		if DirAccess.copy_absolute(SAVE,SAVE+".v1")!=OK:
+	if data.version==1 and not FileAccess.file_exists(save_path+".v1"):
+		if DirAccess.copy_absolute(save_path,save_path+".v1")!=OK:
 			save_failed=true
 			return
 	map_id=data.get("world",{}).get("id","starter_village")
@@ -250,7 +253,8 @@ func load_progress() -> void:
 	social.coins = maxi(0,int(data.get("coins",35)))
 	social.friends = data.get("friends",{})
 	house.restore(data.get("house",{}))
-	room = clampi(int(data.get("room",-1)),-1,6)
+	room = clampi(int(data.get("room",-1)),-1,8)
+	lot_exit=data.get("lot_exit",[])
 	var local: Array = data.get("local",[0,2.2])
 	room_pos = Vector2(clampf(local[0],-3.6,7.6 if room==6 and house.expanded else 3.6),clampf(local[1],-2.7,2.7))
 	bag.slots = data.slots

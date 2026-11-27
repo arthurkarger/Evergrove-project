@@ -20,13 +20,14 @@ var materials := {}
 var box := BoxMesh.new()
 
 func _ready() -> void:
+	if frontier: return
 	for i in DOORS.size(): graph.add_point(i,DOORS[i])
 	for i in POINTS.size(): graph.add_point(i+6,POINTS[i])
 	for edge in [[0,6],[1,7],[2,8],[3,9],[4,10],[5,16],[6,7],[6,9],[7,8],[8,12],[12,11],[11,10],[9,13],[13,14],[14,16],[16,15],[11,15]]:
 		graph.connect_points(edge[0],edge[1])
 	for i in 6:
 		build_room(i)
-		if i == 5 or frontier: continue
+		if i == 5: continue
 		var person := CozyCharacter.new()
 		person.position = outdoor(DOORS[i])+Vector3.UP*0.93
 		add_child(person)
@@ -99,12 +100,13 @@ func furnish(room: Node3D,pos: Vector3,size: Vector3,tint: String,solid := false
 		body.add_child(collision)
 		room.add_child(body)
 
-func build_room(i: int) -> void:
+func build_room(i: int, template := -1) -> void:
+	var style:=i if template<0 else template
 	var room := Node3D.new()
 	room.position = origin(i)
 	add_child(room)
 	rooms.append(room)
-	var accent := str(Social.PEOPLE[i][4]) if i<5 else "6d8b68"
+	var accent := str(Social.PEOPLE[style][4]) if style<5 else "6d8b68"
 	furnish(room,Vector3(0,-0.16,0),Vector3(8.2,0.32,6.4),"bc956e",true)
 	furnish(room,Vector3(0,1.25,-3.15),Vector3(8.2,2.5,0.22),"e8ce9f",true)
 	furnish(room,Vector3(-4,0.55,0),Vector3(0.2,1.1,6.4),"ad8968",true)
@@ -112,7 +114,7 @@ func build_room(i: int) -> void:
 	furnish(room,Vector3(0,0.035,1),Vector3(2.5,0.06,2),accent)
 	furnish(room,Vector3(0,1.55,-2.97),Vector3(1.55,1.06,0.12),"95b9b3")
 	furnish(room,Vector3(0,1.55,-2.88),Vector3(0.09,1.06,0.06),"f1dcb8")
-	if i<5:
+	if style<5:
 		furnish(room,Vector3(-2.5,0.35,-1.3),Vector3(1.55,0.7,2.7),accent,true)
 		furnish(room,Vector3(-2.5,0.77,-2.0),Vector3(1.23,0.17,0.65),"f2dfbe")
 		furnish(room,Vector3(2.8,0.47,-1.5),Vector3(1.25,0.94,1.15),"886748",true)

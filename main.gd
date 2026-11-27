@@ -30,6 +30,8 @@ var village_menu := preload("res://village_menu.gd").new()
 var site := preload("res://home_site.gd").new()
 var home_ui := preload("res://home_ui.gd").new()
 var focus_kind := ""
+var lot_rooms := {}
+var focus_lot := -1
 var focus_resident := ""
 var focus_index := -1
 var initialized := false
@@ -41,6 +43,7 @@ func update_look() -> void:
 	character.configure(hair,fabric,Color("f2c39b"),int(look[0]),int(look[2]),-0.51)
 
 func door(i: int) -> Vector2:
+	if i==life.room and life.lot_exit.size()>=3: return Vector2(life.lot_exit[0],life.lot_exit[1])
 	return life.house.DOOR if i==6 else town.DOORS[i]
 func _ready():
 	var env := WorldEnvironment.new()
@@ -128,6 +131,7 @@ func _ready():
 	village_menu.closed.connect(close_social)
 	village_menu.changed.connect(social_changed)
 	if life.room>=0:
+		prepare_lot_room(life.room)
 		player.position = town.origin(life.room)+Vector3(life.room_pos.x,0.51,life.room_pos.y)
 		camera.position = player.position+Vector3(0,10,10)
 	town.step(0,game_hour(),life.room)
@@ -139,8 +143,14 @@ func _ready():
 	life.settlement.advance(life)
 	site.refresh()
 	update_world_ui()
-	if not FileAccess.file_exists(life.SAVE):
+	if not FileAccess.file_exists(life.save_path):
+		save_game()
 		hud.show_note("Horta a leste · equipe a enxada")
+
+func prepare_lot_room(room: int) -> void:
+	if room in [7,8] and not lot_rooms.has(room):
+		town.build_room(room,0 if room==7 else 5)
+		lot_rooms[room]=true
 
 func configure_world_grid() -> void:
 	var grid=village.world_grid
@@ -162,7 +172,7 @@ func configure_world_grid() -> void:
 		grid.reserve_box(Vector2(p.x,p.z),Vector2(0.9,0.9),"Recurso")
 	for i in 7:
 		if town.frontier and i!=6: continue
-		var p := door(i)
+		var p: Vector2=life.house.DOOR if i==6 else town.DOORS[i]
 		grid.reserve_box(p+Vector2(0,0.35),Vector2(1.9,1.8),"Entrada")
 	for id in town.graph.get_point_ids():
 		if town.frontier: break
@@ -223,11 +233,19 @@ func interact_focus() -> void:
 			else: village_menu.open_person(focus_index,game_hour())
 		"door","exit":
 			if life.room<0:
+				if focus_lot>=0:
+					var lot: Dictionary=life.house.objects[focus_lot]
+					var entry:=site.entrance(lot)
+					life.lot_exit=[entry.x,entry.y,lot.get("who",""),int(lot.r)]
+					prepare_lot_room(focus_index)
 				life.room = focus_index
 				player.position = town.origin(life.room)+Vector3(0,0.52,2.25)
 			else:
-				player.position = town.outdoor(door(life.room))+Vector3(0,0.52,0.55)
+				var offset:=Vector2(0,0.4)
+				if life.lot_exit.size()==4: offset=offset.rotated(-float(life.lot_exit[3])*PI/2)
+				player.position = town.outdoor(door(life.room)+offset)+Vector3.UP*0.52
 				life.room = -1
+				life.lot_exit=[]
 			player.velocity = Vector3.ZERO
 			camera.position = player.position+Vector3(0,10,10)
 			town.step(0,game_hour(),life.room)
@@ -291,6 +309,7 @@ func update_world_ui() -> void:
 	hud.action.disabled = life.target < 0
 	focus_kind = ""
 	focus_index = -1
+	focus_lot = -1
 	var best := 1.85
 	if life.room>=0:
 		hud.action.text = "Interagir"
@@ -301,7 +320,7 @@ func update_world_ui() -> void:
 			focus_kind = "exit"
 			hud.action.text = "Sair"
 			best = Vector2(local.x,local.z-2.8).length()
-		if life.room==5 and absf(local.x)<2.6 and local.z<0.65:
+		if (life.room==5 or (life.room==8 and life.lot_exit.size()>=3 and life.lot_exit[2]=="merchant")) and absf(local.x)<2.6 and local.z<0.65:
 			focus_kind = "shop"
 			hud.action.text = "Abrir armazém"
 	else:
@@ -325,6 +344,16 @@ func update_world_ui() -> void:
 			focus_index = i
 			hud.action.text = "Falar · "+str(life.social.PEOPLE[i][0])
 	if life.room==-1:
+		for j in life.house.objects.size():
+			var obj: Dictionary=life.house.objects[j]
+			if not obj.get("complete",false): continue
+			var d:=Vector2(player.position.x,player.position.z).distance_to(site.entrance(obj))
+			if d<best:
+				best=d
+				focus_kind="door"
+				focus_lot=j
+				focus_index=8 if obj.id=="shop" else 7
+				hud.action.text="Entrar na loja" if obj.id=="shop" else "Entrar na casa"
 		for actor in site.settlers.get_children():
 			var d:=Vector2(player.position.x-actor.position.x,player.position.z-actor.position.z).length()
 			if d<best:

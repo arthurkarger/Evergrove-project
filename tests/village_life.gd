@@ -76,5 +76,6 @@ func run() -> void:
 	var previous = scene.instantiate()
 	root.add_child(previous)
 	check(previous.life.room==-1 and previous.life.social.coins==35 and previous.life.bag.quantity("seed")==8,"0.3 migration")
+	check(FileAccess.get_file_as_string(life.SAVE+".v1")==JSON.stringify(old),"Original v1 backup preserved")
 	print("Village Life integration failures: ",failures)
 	quit(1 if failures else 0)

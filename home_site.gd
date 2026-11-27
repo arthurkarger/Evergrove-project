@@ -200,6 +200,11 @@ func locate(node: Node3D,room: int,tile: Vector2i,id: String,r: int) -> void:
 	node.position=base(room)+Vector3(center.x,0.06,center.y)
 	node.rotation.y=r*PI/2
 
+func entrance(obj: Dictionary) -> Vector2:
+	var size: Vector2i=state.size_of(obj.id,int(obj.r))
+	var center:=Grid.cell_center(Vector2i(int(obj.x),int(obj.z)),size)
+	return center+Vector2(0,1.48).rotated(-float(obj.r)*PI/2)
+
 func refresh() -> void:
 	clear(props)
 	clear(settlers)
@@ -209,7 +214,7 @@ func refresh() -> void:
 		locate(node,int(obj.room),Vector2i(int(obj.x),int(obj.z)),obj.id,int(obj.r))
 		var who: String=obj.get("who","")
 		if world.life.settlement.stages.get(who)=="installed":
-			add_settler(who,node.position+node.basis*Vector3(0,0,1.45))
+			add_settler(who,node.position+node.basis*Vector3(1.38,0,1.45))
 	var index_at_camp:=0
 	for who in world.life.settlement.stages:
 		if world.life.settlement.stages[who] in ["visitor","invited"]:
