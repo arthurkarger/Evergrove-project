@@ -9,9 +9,9 @@ var title := Label.new()
 var note := Label.new()
 var options := VBoxContainer.new()
 var hint := Label.new()
-var accept := Button.new()
-var remove := Button.new()
-var rotate := Button.new()
+var accept: Button
+var remove: Button
+var rotate: Button
 var scroll := ScrollContainer.new()
 var chest := -1
 var page := ""
