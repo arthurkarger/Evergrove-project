@@ -1,6 +1,7 @@
 extends Node3D
 
 const Social = preload("res://social.gd")
+const CozyCharacter = preload("res://cozy_character.gd")
 const DOORS := [Vector2(-12,-3.8),Vector2(0,-8.8),Vector2(10,-5.8),Vector2(-24,-8.8),Vector2(13,15.2),Vector2(-3,12.3)]
 const POINTS := [Vector2(-12,3),Vector2(0,2),Vector2(9,-1),Vector2(-22,1),Vector2(16,15.2),Vector2(16,9),Vector2(15,1),Vector2(-22,12),Vector2(-12,16),Vector2(3,15),Vector2(-3,14.7)]
 const MORNING := [7,6,13,9,15]
@@ -9,7 +10,7 @@ const HAIR := ["694832","68483b","4d3635","cbc7b2","533a45"]
 const COATS := ["ab6365","60848a","8c985b","947150","897193"]
 const SKIN := ["ddab85","ae7857","dfae8a","c99170","9f6a51"]
 var graph := AStar2D.new()
-var actors: Array[Sprite3D] = []
+var actors: Array[CozyCharacter] = []
 var current: Array[int] = []
 var next: Array[int] = []
 var home: Array[bool] = []
@@ -25,13 +26,10 @@ func _ready() -> void:
 	for i in 6:
 		build_room(i)
 		if i == 5: continue
-		var person := Sprite3D.new()
-		person.texture = portrait(i)
-		person.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		person.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		person.pixel_size = 0.075
+		var person := CozyCharacter.new()
 		person.position = outdoor(DOORS[i])+Vector3.UP*0.93
 		add_child(person)
+		person.configure(Color(HAIR[i]),Color(COATS[i]),Color(SKIN[i]),i%3,(i+1)%3,-0.93)
 		actors.append(person)
 		current.append(i)
 		next.append(i)
@@ -81,6 +79,8 @@ func furnish(room: Node3D,pos: Vector3,size: Vector3,tint: String,solid := false
 	if not materials.has(tint):
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(tint)
+		mat.roughness = 0.95
+		mat.metallic_specular = 0.05
 		materials[tint] = mat
 	var mesh := MeshInstance3D.new()
 	mesh.mesh = box
@@ -124,6 +124,7 @@ func step(delta: float,hour: int,room: int) -> void:
 	for i in actors.size():
 		var goal: int = i if hour>=19 or hour<6 else (MORNING[i] if hour<12 else AFTERNOON[i])
 		var actor := actors[i]
+		var walk_direction := Vector2.ZERO
 		if current[i]==next[i] and current[i]!=goal:
 			var path := graph.get_id_path(current[i],goal)
 			next[i] = int(path[1])
@@ -135,9 +136,9 @@ func step(delta: float,hour: int,room: int) -> void:
 			var dest := outdoor(graph.get_point_position(next[i]))+Vector3.UP*0.93
 			if next[i]==goal and goal!=i:
 				dest.x += (i-2)*0.32
-			var dx := dest.x-actor.position.x
-			if absf(dx)>0.1: actor.flip_h = dx<0
+			walk_direction = Vector2(dest.x-actor.position.x,dest.z-actor.position.z)
 			actor.position = actor.position.move_toward(dest,delta*1.6)
 			if actor.position.is_equal_approx(dest): current[i]=next[i]
 		home[i]=indoors
 		actor.visible = (room==i if indoors else room<0)
+		if actor.visible: actor.pose(walk_direction,delta)
