@@ -26,10 +26,13 @@ func run() -> void:
 	title.show_menu()
 	check(title.menu.visible and not title.options.visible,"Back to menu")
 	title.play_button.pressed.emit()
+	check(title.maps.visible,"New game offers map selection")
+	title.select_world("pinhal")
 	await create_timer(0.8).timeout
 	check(is_instance_valid(current_scene) and current_scene.scene_file_path=="res://main.tscn","Jogar loads gameplay")
 	if is_instance_valid(current_scene) and current_scene.scene_file_path=="res://main.tscn":
 		check(current_scene.quality_level==0,"Menu graphics quality used in gameplay")
+		check_frontier(current_scene)
 		current_scene.graphics.open()
 		current_scene.graphics.return_to_title()
 		await process_frame
@@ -37,3 +40,51 @@ func run() -> void:
 		check(is_instance_valid(current_scene) and current_scene.scene_file_path=="res://title.tscn","Pause returns to main menu")
 	print("Title menu integration failures: ",failures)
 	quit(1 if failures else 0)
+
+func check_frontier(w) -> void:
+	var maps=preload("res://natural_maps.gd")
+	var layouts: Array=[]
+	for key in maps.MAPS:
+		var layout=maps.new(key,maps.MAPS[key][1])
+		check(not layout.trees.is_empty() and not layout.water.is_empty(),"Natural terrain "+key)
+		check(not layouts.has(layout.water),"Distinct waterways")
+		layouts.append(layout.water)
+	var life=w.life
+	var s=life.settlement
+	check(w.village.house_centers.size()==1 and w.town.actors.is_empty(),"Single starter cottage")
+	check(life.map_id=="pinhal" and w.village.world_grid.seed_value==419,"Map choice")
+	check(s.metrics(life).stars==1 and s.stages.is_empty(),"Initial reputation")
+	life.social.coins=500
+	var h=life.house
+	h.stock.shop=1
+	var cell:=Vector2i(-8,8)
+	check(h.place(-1,"shop",cell,1,-1,Vector2.ZERO),"Free commercial plot")
+	w.save_game()
+	check(s.stages.get("merchant")=="visitor","Merchant arrives")
+	w.home_ui.meet("merchant")
+	w.home_ui.invite()
+	var obj: Dictionary=h.objects.back()
+	w.home_ui.assign_plot(obj)
+	check(s.stages.get("merchant")=="materials" and not s.fund(obj,life),"Material requirement")
+	life.bag.add("wood",8)
+	life.bag.add("stone",5)
+	w.home_ui.fund(obj)
+	check(life.social.coins==465 and not s.fund(obj,life),"Payment exactly once")
+	var snapshot: Dictionary=JSON.parse_string(FileAccess.get_file_as_string(life.SAVE))
+	check(snapshot.house.objects.back().due==life.day+1 and snapshot.world.id=="pinhal","Pending work persisted")
+	life.advance(life.DAY_SECONDS)
+	w.save_game()
+	check(s.stages.get("merchant")=="installed" and obj.complete,"Next-day move-in")
+	check(w.site.settlers.has_node("merchant"),"Resident present")
+	w.home_ui.meet("merchant")
+	w.home_ui.shop()
+	check(w.village_menu.shop_panel.visible,"Shop benefit")
+	w.village_menu.close()
+	s.stats.species=20
+	s.stats.harvest=30
+	s.advance(life)
+	check(not s.stages.has("fisher") and not s.stages.has("cook"),"Unavailable systems stay locked")
+	var copy=preload("res://main.tscn").instantiate()
+	root.add_child(copy)
+	check(copy.life.map_id=="pinhal" and copy.life.settlement.stages.get("merchant")=="installed" and copy.site.settlers.has_node("merchant"),"Resume settlement")
+	copy.free()

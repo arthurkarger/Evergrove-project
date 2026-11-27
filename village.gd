@@ -2,6 +2,7 @@ extends Node3D
 
 const BlenderModels = preload("res://blender_models.gd")
 const Starter = preload("res://starter_layout.gd")
+var landscape: RefCounted
 var world_grid = Starter.new_grid()
 const LIMIT_X := 30
 const LIMIT_Z := 23
@@ -56,14 +57,17 @@ func _ready() -> void:
 	contact_plane.size = Vector2.ONE
 	meshes["contact"] = contact_plane
 	meshes["lantern_glass"] = BoxMesh.new()
-	build_paths()
-	build_homes()
-	build_lake()
-	build_groves()
-	garden_details()
-	beautify_starter()
-	plant_grass()
-	build_lamps()
+	if landscape:
+		landscape.render(self)
+	else:
+		build_paths()
+		build_homes()
+		build_lake()
+		build_groves()
+		garden_details()
+		beautify_starter()
+		plant_grass()
+		build_lamps()
 	flush_batches()
 	flush_imported()
 	setup_lake_probe()
@@ -578,6 +582,7 @@ void fragment() {
 	return mat
 
 func clear_for_grass(p: Vector2) -> bool:
+	if landscape and world_grid.reserved.has(Vector2i(p.round())): return false
 	if Rect2(-5,16,11,7).has_point(p) or Rect2(2,3.5,7,6).has_point(p):
 		return false
 	if ((p-Vector2(22,-7))/Vector2(6.7,8.8)).length() < 1.04:
@@ -762,6 +767,9 @@ func setup_lake_probe() -> void:
 	if DisplayServer.get_name()=="headless" or RenderingServer.get_current_rendering_method()=="gl_compatibility": return
 	lake_probe=ReflectionProbe.new()
 	lake_probe.position=Vector3(22,1.25,-7)
+	if landscape:
+		var bank: Vector2i=landscape.water.keys()[landscape.water.size()/2]
+		lake_probe.position=Vector3(bank.x,1.25,bank.y)
 	lake_probe.size=Vector3(21,12,25)
 	lake_probe.intensity=0.65
 	lake_probe.max_distance=36.0

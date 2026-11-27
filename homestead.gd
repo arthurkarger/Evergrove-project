@@ -20,8 +20,12 @@ var target := -1 # Plots first, then forage sites.
 var saved_position := Vector3(0,0.5,6)
 var house := preload("res://home_state.gd").new()
 var social := preload("res://social.gd").new()
+var settlement := preload("res://settlement.gd").new()
+var map_id := "starter_village"
+var map_seed := 0
 var room := -1
 var room_pos := Vector2(0,2.2)
+var protect_existing := false
 var save_failed := false
 
 func _ready() -> void:
@@ -56,6 +60,10 @@ func _ready() -> void:
 	marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(marker)
 	marker.hide()
+	if get_tree().has_meta("evergrove_map"):
+		map_id=get_tree().get_meta("evergrove_map")
+		get_tree().remove_meta("evergrove_map")
+		map_seed=preload("res://natural_maps.gd").MAPS[map_id][1]
 	load_progress()
 	for i in beds.size(): draw_bed(i)
 	refresh_resources()
@@ -177,6 +185,7 @@ func interact() -> String:
 		if dormant.has(str(i)): return ""
 		if REQUIRED.has(id) and bag.held() != REQUIRED[id]: return prompt()
 		if not bag.add(id,1): return "Mochila cheia"
+		settlement.count(id)
 		dormant[str(i)] = day+1
 		resources[i].node.hide()
 		return "+1 "+str(Bag.NAMES[id])
@@ -187,6 +196,7 @@ func interact() -> String:
 		if not bag.add("turnip",1) or not bag.add("seed",2):
 			bag.slots = before
 			return "Abra espaço para nabo e sementes"
+		settlement.count("harvest")
 		p.growth = -1
 		p.water = false
 		message = "+1 nabo · +2 sementes"
@@ -200,7 +210,10 @@ func interact() -> String:
 	return message
 
 func save_progress(pos: Vector3) -> void:
-	var data := {"version":1,"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	if protect_existing:
+		save_failed=true
+		return
+	var data := {"version":2,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	var f := FileAccess.open(SAVE+".tmp",FileAccess.WRITE)
 	save_failed = true
 	if f == null: return
@@ -213,8 +226,9 @@ func save_progress(pos: Vector3) -> void:
 
 func load_progress() -> void:
 	if not FileAccess.file_exists(SAVE): return
+	protect_existing=true
 	var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE))
-	if not data is Dictionary or data.get("version") != 1: return
+	if not data is Dictionary or int(data.get("version",0)) not in [1,2]: return
 	if not data.get("slots") is Array or data.slots.size() != Bag.SIZE: return
 	if not data.get("plots") is Array or data.plots.size() != beds.size(): return
 	for item in data.slots:
@@ -224,6 +238,15 @@ func load_progress() -> void:
 		if not p is Dictionary or not p.has_all(["soil","water","growth"]): return
 		p.growth = clampi(int(p.growth),-1,2)
 	if not data.get("pos") is Array or data.pos.size()!=2: return
+	if data.version==1 and not FileAccess.file_exists(SAVE+".v1"):
+		if DirAccess.copy_absolute(SAVE,SAVE+".v1")!=OK:
+			save_failed=true
+			return
+	map_id=data.get("world",{}).get("id","starter_village")
+	map_seed=int(data.get("world",{}).get("seed",0))
+	var settlement_data: Dictionary=data.get("settlement",{})
+	settlement.stats=settlement_data.get("stats",{})
+	settlement.stages=settlement_data.get("stages",{})
 	social.coins = maxi(0,int(data.get("coins",35)))
 	social.friends = data.get("friends",{})
 	house.restore(data.get("house",{}))
@@ -237,4 +260,5 @@ func load_progress() -> void:
 	plots = data.plots
 	dormant = data.get("dormant",{})
 	for key in dormant: dormant[key] = int(dormant[key])
+	protect_existing=false
 	saved_position = Vector3(clampf(data.pos[0],-30,30),0.51,clampf(data.pos[1],-23,23))

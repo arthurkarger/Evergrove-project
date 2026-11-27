@@ -17,6 +17,7 @@ var kind := ""
 var turns := 0
 var valid := false
 var failure_reason := ""
+var settlers := Node3D.new()
 var footprint_mesh := MeshInstance3D.new()
 var footprint_material := StandardMaterial3D.new()
 const Grid = preload("res://world_grid.gd")
@@ -27,6 +28,7 @@ func setup(game) -> void:
 	add_child(cabin)
 	cabin.position=game.town.origin(6)
 	add_child(props)
+	add_child(settlers)
 	room_geometry()
 	refresh()
 	var shader := Shader.new()
@@ -79,10 +81,33 @@ func room_geometry() -> void:
 func base(room: int) -> Vector3:
 	return cabin.position if room==6 else Vector3.ZERO
 
-func model(id: String,preview: bool) -> Node3D:
+func model(id: String,preview: bool,completed := false) -> Node3D:
 	var node := Node3D.new()
 	var t=world.town
 	match id:
+		"house","shop":
+			var width:=5.0 if id=="shop" else 4.2
+			if completed:
+				var parts:=preload("res://blender_models.gd").parts("house_"+("597e80" if id=="shop" else "b76349"))
+				for part in parts:
+					var mesh:=MeshInstance3D.new()
+					mesh.mesh=part[0]
+					mesh.transform=Transform3D(Basis.from_scale(Vector3(width/3,1.05,1.12)),Vector3(0,0,-0.35))*part[1]
+					node.add_child(mesh)
+				if parts.is_empty():
+					t.furnish(node,Vector3(0,1,-0.35),Vector3(width,2,2.5),"efd2a2")
+					t.furnish(node,Vector3(0,2.15,-0.35),Vector3(width+0.2,0.5,2.7),"648799" if id=="shop" else "bd795e")
+					t.furnish(node,Vector3(0,0.75,0.95),Vector3(1,1.5,0.12),"806147")
+				if not preview: prop_collision(node,Vector3(0,1,-0.35),Vector3(width,2,2.5))
+			else:
+				for x in [-1,1]:
+					for z in [-1,1]:
+						t.furnish(node,Vector3(x*(width/2-0.14),0.28,z*1.45),Vector3(0.16,0.56,0.16),"a6825c",not preview)
+				t.furnish(node,Vector3(0,0.48,-1.45),Vector3(width,0.12,0.13),"d8ba89")
+		"tree":
+			rounded(node,Vector3.UP*0.68,Vector3(0.36,1.36,0.36),"876341",true)
+			rounded(node,Vector3.UP*1.68,Vector3(1.85,1.65,1.8),"79a85c")
+			if not preview: prop_collision(node,Vector3.UP*0.65,Vector3(0.36,1.3,0.36))
 		"path": t.furnish(node,Vector3.UP*0.045,Vector3(0.96,0.08,0.96),"bbad91")
 		"chest":
 			t.furnish(node,Vector3.UP*0.34,Vector3(0.88,0.68,0.76),"92704e",not preview)
@@ -177,10 +202,27 @@ func locate(node: Node3D,room: int,tile: Vector2i,id: String,r: int) -> void:
 
 func refresh() -> void:
 	clear(props)
+	clear(settlers)
 	for obj in state.objects:
-		var node := model(obj.id,false)
+		var node := model(obj.id,false,obj.get("complete",false))
 		props.add_child(node)
 		locate(node,int(obj.room),Vector2i(int(obj.x),int(obj.z)),obj.id,int(obj.r))
+		var who: String=obj.get("who","")
+		if world.life.settlement.stages.get(who)=="installed":
+			add_settler(who,node.position+node.basis*Vector3(0,0,1.45))
+	var index_at_camp:=0
+	for who in world.life.settlement.stages:
+		if world.life.settlement.stages[who] in ["visitor","invited"]:
+			add_settler(who,Vector3(-3+index_at_camp%6,0,0+index_at_camp/6))
+			index_at_camp+=1
+
+func add_settler(who: String,p: Vector3) -> void:
+	var actor:=preload("res://cozy_character.gd").new()
+	actor.name=who
+	settlers.add_child(actor)
+	actor.position=p+Vector3.UP*0.93
+	var i:=posmod(who.hash(),5)
+	actor.configure(Color(world.town.HAIR[i]),Color(world.town.COATS[i]),Color(world.town.SKIN[i]),i%3,(i+1)%3,-0.93)
 
 func begin(id: String) -> void:
 	active=true
@@ -242,6 +284,9 @@ func pick(tile: Vector2i) -> void:
 		index=state.at(world.life.room,cell)
 		if index>=0:
 			var obj: Dictionary=state.objects[index]
+			if obj.has("due") or obj.get("who","")!="" or obj.get("complete",false):
+				index=-1
+				return
 			kind=obj.id
 			turns=int(obj.r)
 			cell=Vector2i(int(obj.x),int(obj.z))

@@ -9,6 +9,7 @@ const AFTERNOON := [12,15,9,12,7]
 const HAIR := ["694832","68483b","4d3635","cbc7b2","533a45"]
 const COATS := ["ab6365","60848a","8c985b","947150","897193"]
 const SKIN := ["ddab85","ae7857","dfae8a","c99170","9f6a51"]
+var frontier := false
 var graph := AStar2D.new()
 var actors: Array[CozyCharacter] = []
 var current: Array[int] = []
@@ -25,7 +26,7 @@ func _ready() -> void:
 		graph.connect_points(edge[0],edge[1])
 	for i in 6:
 		build_room(i)
-		if i == 5: continue
+		if i == 5 or frontier: continue
 		var person := CozyCharacter.new()
 		person.position = outdoor(DOORS[i])+Vector3.UP*0.93
 		add_child(person)

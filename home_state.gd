@@ -5,8 +5,8 @@ const Grid = preload("res://world_grid.gd")
 const Starter = preload("res://starter_layout.gd")
 var world_grid = Starter.new_grid()
 const DOOR := Vector2(-7,21.65)
-const NAMES := {"path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão","flower":"Canteiro","shrub":"Arbusto","lamp":"Poste","fountain":"Fonte"}
-const RECIPES := {"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2},"flower":{"flower":2},"shrub":{"twig":3,"flower":1},"lamp":{"wood":2,"stone":2},"fountain":{"stone":6,"wood":1}}
+const NAMES := {"house":"Terreno residencial","shop":"Terreno comercial","tree":"Árvore","path":"Caminho","fence":"Cerca","bench":"Banco","table":"Mesa","chest":"Baú","arch":"Caramanchão","flower":"Canteiro","shrub":"Arbusto","lamp":"Poste","fountain":"Fonte"}
+const RECIPES := {"house":{"twig":2},"shop":{"twig":3},"tree":{"fruit":1,"twig":2},"path":{"stone":1},"fence":{"wood":1,"twig":1},"bench":{"wood":2},"table":{"wood":2,"twig":1},"chest":{"wood":3,"stone":1},"arch":{"wood":3,"twig":2},"flower":{"flower":2},"shrub":{"twig":3,"flower":1},"lamp":{"wood":2,"stone":2},"fountain":{"stone":6,"wood":1}}
 var stock := {"bench":1,"chest":1,"path":3}
 var objects: Array = []
 var expanded := false
@@ -41,7 +41,7 @@ func placement_reason(room: int,id: String,cell: Vector2i,r: int,skip: int,playe
 	if not NAMES.has(id): return "Objeto desconhecido"
 	var box := Rect2i(cell,size_of(id,r))
 	if not area(room).encloses(box): return "Fora da área"
-	if room!=-1 and id in ["flower","shrub","lamp","fountain"]: return "Somente ao ar livre"
+	if room!=-1 and id in ["flower","shrub","lamp","fountain","house","shop","tree"]: return "Somente ao ar livre"
 	if room==-1:
 		var obstacle: String=world_grid.reason(box)
 		if obstacle!="": return obstacle
@@ -75,6 +75,7 @@ func place(room: int,id: String,cell: Vector2i,r: int,index: int,player: Vector2
 
 func remove_object(i: int) -> bool:
 	var obj: Dictionary=objects[i]
+	if obj.get("who","")!="" or obj.has("due") or obj.get("complete",false): return false
 	if obj.id=="chest" and obj.slots.any(func(item): return item!=null): return false
 	stock[obj.id]=int(stock.get(obj.id,0))+1
 	objects.remove_at(i)

@@ -15,6 +15,7 @@ var accept: Button
 var remove: Button
 var rotate: Button
 var scroll := ScrollContainer.new()
+var candidate := ""
 var chest := -1
 var page := ""
 var deposit := true
@@ -118,7 +119,8 @@ func draw() -> void:
 	match page:
 		"home":
 			title.text="Lar · %d folhas" % world.life.social.coins
-			note.text="Sua casa de telhado azul fica ao sul da praça."
+			note.text="Sua casa de telhado azul fica ao sul."
+			link("Moradores e obras","settlement")
 			link("Oficina","craft")
 			if room in [-1,6]: link("Planta da casa" if room==6 else "Construir na vila","catalog")
 			link("Aparência","look")
@@ -128,7 +130,7 @@ func draw() -> void:
 			title.text="Objetos disponíveis" if page=="catalog" else "Oficina"
 			if page=="catalog": button(options,"Selecionar móvel colocado",build.bind(""))
 			for id in house.NAMES:
-				if page=="catalog" and room!=-1 and id in ["flower","shrub","lamp","fountain"]: continue
+				if page=="catalog" and room!=-1 and id in ["flower","shrub","lamp","fountain","tree","shop","house"]: continue
 				var line: String=house.NAMES[id]+"  ×"+str(int(house.stock.get(id,0)))
 				if page=="catalog":
 					button(options,line,build.bind(id)).disabled=int(house.stock.get(id,0))==0
@@ -142,9 +144,23 @@ func draw() -> void:
 						if bag.quantity(k)<int(house.RECIPES[id][k]): enough=false
 					craft_button.disabled=not enough
 			link("Voltar","home")
+		"settlement":
+			settlement_board()
+		"resident":
+			resident_page()
+		"shipping":
+			title.text="Caixa de remessas"
+			note.text="Venda sua coleta para financiar a primeira construção."
+			button(options,"Comprar sementes · 3 folhas",buy_seed).disabled=world.life.social.coins<3
+			for id in world.life.social.SELL:
+				var qty: int=bag.quantity(id)
+				if qty>0: button(options,"%s ×%d · vender 1 por %d" % [bag.NAMES[id],qty,world.life.social.SELL[id]],sell.bind(id))
+			link("Voltar","settlement")
 		"look":
 			title.text="Aparência"
 			var values := [["Curto","Franja","Coque"],["Castanho","Mel","Preto","Cobre"],["Camisa","Jardineira","Cachecol"],["Azul","Verde","Vinho","Mostarda"]]
+			if world.life.settlement.stages.get("stylist")=="installed":
+				values[3].append_array(["Lago","Terracota"])
 			for i in 4:
 				button(options,"%s · %s" % [["Corte","Cabelo","Roupa","Tecido"][i],values[i][int(house.look[i])]],change_look.bind(i,values[i].size()))
 			link("Voltar","home")
@@ -165,6 +181,7 @@ func draw() -> void:
 
 func craft(id: String) -> void:
 	if world.life.house.craft(id,world.life.bag):
+		if id in ["bench","table","chest","arch"]: world.life.settlement.count("furniture")
 		note.text="Fabricado · "+str(world.life.house.NAMES[id])
 		world.save_game()
 	else: note.text="Faltam materiais."
@@ -267,3 +284,130 @@ func motion(p: Vector2) -> void:
 		site.pan+=site.ray(last)-site.ray(p)
 		site.bound_pan()
 	last=p
+
+func sell(id: String) -> void:
+	world.life.social.trade(world.life.bag,id,false)
+	world.save_game()
+	draw()
+
+func meet(id: String) -> void:
+	candidate=id
+	open("resident")
+
+func settlement_board() -> void:
+	var life=world.life
+	var s=life.settlement
+	var m: Dictionary=s.metrics(life)
+	title.text="Comunidade · %d ★" % m.stars
+	note.text="Decoração %d · Verde %d · Infraestrutura %d · Comércio %d · Moradores %d" % [m.decor,m.green,m.infra,m.trade,m.residents]
+	link("Caixa de remessas","shipping")
+	if life.room==-1:
+		for kind in ["house","shop"]:
+			button(options,"Demarcar "+str(life.house.NAMES[kind]).to_lower(),plot.bind(kind))
+	for i in life.house.objects.size():
+		var obj: Dictionary=life.house.objects[i]
+		if not s.COST.has(obj.id): continue
+		var label_text:=plot_name(obj)
+		if obj.has("due"): label_text+=" · pronto no dia %d" % obj.due
+		elif obj.get("complete",false): label_text+=" · pronto"
+		if not obj.has("due") and (not obj.get("complete",false) or s.stages.get(obj.get("who",""))=="materials"):
+			var cost: Dictionary=s.COST[obj.id]
+			button(options,label_text+" · entregar %d madeiras, %d pedras e %d folhas" % [cost.wood,cost.stone,s.PRICE[obj.id]],fund.bind(obj))
+		else: button(options,label_text,func(): pass).disabled=true
+	for id in s.PEOPLE:
+		button(options,s.PEOPLE[id][0]+" · "+stage_label(id),meet.bind(id))
+	link("Voltar","home")
+
+func plot_name(obj: Dictionary) -> String:
+	return "%s (%d, %d)" % [world.life.house.NAMES[obj.id],obj.x,obj.z]
+
+func stage_label(id: String) -> String:
+	var s=world.life.settlement
+	if s.PEOPLE[id][3]!="": return "Aguarda "+s.PEOPLE[id][3]
+	return {"visitor":"Visitante","invited":"Escolher terreno","materials":"Entregar materiais","building":"Em obras","installed":"Instalado"}.get(s.stages.get(id,""),"Requisitos")
+
+func resident_page() -> void:
+	var life=world.life
+	var s=life.settlement
+	var info: Array=s.PEOPLE[candidate]
+	title.text=info[0]+" · "+info[1]
+	var metrics: Dictionary=s.metrics(life)
+	var needs:=PackedStringArray()
+	for k in info[2]:
+		needs.append("%s %d/%d" % [s.LABEL[k],metrics.get(k,0),info[2][k]])
+	note.text=stage_label(candidate)+" · "+", ".join(needs)
+	match s.stages.get(candidate,""):
+		"visitor": button(options,"Convidar para morar",invite)
+		"invited":
+			var kind: String="shop" if candidate=="merchant" else "house"
+			for obj in life.house.objects:
+				if obj.id==kind and obj.get("who","")=="" and not obj.has("due"):
+					button(options,"Escolher "+plot_name(obj),assign_plot.bind(obj))
+			if life.room==-1: button(options,"Demarcar novo terreno",plot.bind(kind))
+		"installed":
+			if world.town.frontier and candidate in ["lia","davi","bento"] and world.life.room==-1:
+				button(options,"Conversar e trocar presentes",talk_common)
+			if candidate=="merchant":
+				button(options,"Abrir armazém",shop)
+			elif candidate=="stylist": link("Ateliê de aparência","look")
+			else:
+				var gifts: Dictionary={"gardener":"flower","carpenter":"wood","architect":"stone","artist":"shrub","lia":"seed","davi":"twig","bento":"stone"}
+				var item: String=gifts.get(candidate,"seed")
+				var name_text: String=life.bag.NAMES.get(item,life.house.NAMES.get(item,item))
+				button(options,"Receber "+name_text+" do morador",collect.bind(item)).disabled=int(s.stats.get("gift_"+candidate,0))==life.day
+	link("Voltar","settlement")
+
+func plot(kind: String) -> void:
+	var house=world.life.house
+	if int(house.stock.get(kind,0))<=0 and not house.craft(kind,world.life.bag):
+		note.text="Reúna %d gravetos para marcar o terreno." % house.RECIPES[kind].twig
+		return
+	world.save_game()
+	build(kind)
+
+func invite() -> void:
+	if world.life.settlement.stages.get(candidate)=="visitor":
+		world.life.settlement.stages[candidate]="invited"
+	world.save_game()
+	draw()
+
+func assign_plot(obj: Dictionary) -> void:
+	if world.life.settlement.assign(candidate,obj):
+		site.refresh()
+		world.save_game()
+		open("settlement")
+
+func fund(obj: Dictionary) -> void:
+	if world.life.settlement.fund(obj,world.life):
+		world.save_game()
+		draw()
+	else: note.text="Faltam materiais ou folhas para a entrega."
+
+func talk_common() -> void:
+	var actor=site.settlers.get_node_or_null(NodePath(candidate))
+	if actor==null: return
+	menu.hide()
+	world.village_menu.open_person({"lia":0,"davi":1,"bento":3}[candidate],world.game_hour(),actor)
+
+func shop() -> void:
+	menu.hide()
+	world.village_menu.open_shop()
+
+func collect(item: String) -> void:
+	var life=world.life
+	var key: String="gift_"+candidate
+	if int(life.settlement.stats.get(key,0))==life.day: return
+	if life.house.NAMES.has(item) and not life.bag.NAMES.has(item):
+		life.house.stock[item]=int(life.house.stock.get(item,0))+1
+	elif not life.bag.add(item,1):
+		note.text="Mochila cheia."
+		return
+	life.settlement.stats[key]=life.day
+	world.save_game()
+	draw()
+
+func buy_seed() -> void:
+	var result: String=world.life.social.trade(world.life.bag,"seed",true)
+	world.save_game()
+	draw()
+	note.text=result

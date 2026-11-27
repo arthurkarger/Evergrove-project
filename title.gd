@@ -10,6 +10,7 @@ var camera := Camera3D.new()
 var sun := DirectionalLight3D.new()
 var env := Environment.new()
 var menu := VBoxContainer.new()
+var maps := VBoxContainer.new()
 var options := VBoxContainer.new()
 var fade := ColorRect.new()
 var play_button: Button
@@ -164,8 +165,22 @@ func build_interface() -> void:
 	var spacer := Control.new()
 	spacer.custom_minimum_size.y=14
 	menu.add_child(spacer)
-	play_button=button(menu,"Jogar",start_game,true)
+	play_button=button(menu,"Jogar",choose_world,true)
 	options_button=button(menu,"Opções",show_options)
+	pages.add_child(maps)
+	maps.hide()
+	text_label(maps,"Escolha seu mapa",26)
+	var cards := GridContainer.new()
+	cards.columns=2
+	maps.add_child(cards)
+	var layouts = preload("res://natural_maps.gd")
+	for id in layouts.MAPS:
+		var data: Array=layouts.MAPS[id]
+		var card := button(cards,data[0],select_world.bind(id))
+		card.icon=layouts.new(id,data[1]).thumbnail()
+		card.vertical_icon_alignment=VERTICAL_ALIGNMENT_TOP
+		card.icon_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	button(maps,"Voltar",show_menu)
 	pages.add_child(options)
 	options.add_theme_constant_override("separation",7)
 	text_label(options,"Opções",32)
@@ -218,6 +233,7 @@ func show_options() -> void:
 	quality_buttons[quality].grab_focus()
 
 func show_menu() -> void:
+	maps.hide()
 	if leaving: return
 	options.hide()
 	menu.show()
@@ -300,6 +316,17 @@ func add_note(buffer: PackedFloat32Array, rate: int, start: int, note: int, dura
 		var idx := posmod(start+i,buffer.size())
 		buffer[idx]+=sample
 
+func choose_world() -> void:
+	if FileAccess.file_exists(preload("res://homestead.gd").SAVE):
+		start_game()
+	else:
+		menu.hide()
+		maps.show()
+
+func select_world(id: String) -> void:
+	get_tree().set_meta("evergrove_map",id)
+	start_game()
+
 func start_game() -> void:
 	if leaving: return
 	leaving=true
@@ -316,6 +343,6 @@ func start_game() -> void:
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if leaving or not event is InputEventKey or not event.pressed or event.echo: return
-	if event.keycode==KEY_ESCAPE and options.visible:
+	if event.keycode==KEY_ESCAPE and (options.visible or maps.visible):
 		show_menu()
 		get_viewport().set_input_as_handled()

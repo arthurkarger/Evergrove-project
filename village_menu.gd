@@ -120,7 +120,7 @@ func clear_buttons(container: Control) -> void:
 		container.remove_child(child)
 		child.queue_free()
 
-func open_person(i: int,hour: int) -> void:
+func open_person(i: int,hour: int,person: Node3D=null) -> void:
 	resident=i
 	message=world.life.social.talk(i,world.life.day,hour,world.life.room>=0)
 	shade.color=Color(0,0,0,0.06)
@@ -128,7 +128,7 @@ func open_person(i: int,hour: int) -> void:
 	dialog.show()
 	shop_panel.hide()
 	old_camera=world.camera.position
-	actor=world.town.actors[i]
+	actor=person if person!=null else world.town.actors[i]
 	actor_body=actor.get("body") as Node3D
 	old_actor_rotation=actor.rotation.y
 	if is_instance_valid(actor_body):

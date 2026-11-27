@@ -30,13 +30,14 @@ var village_menu := preload("res://village_menu.gd").new()
 var site := preload("res://home_site.gd").new()
 var home_ui := preload("res://home_ui.gd").new()
 var focus_kind := ""
+var focus_resident := ""
 var focus_index := -1
 var initialized := false
 
 func update_look() -> void:
 	var look: Array = life.house.look
 	var hair := Color(["674637","ad804d","393236","ad624c"][int(look[1])])
-	var fabric := Color(["517b91","6e8964","91596b","b29554"][int(look[3])])
+	var fabric := Color(["517b91","6e8964","91596b","b29554","49778c","b46454"][int(look[3])])
 	character.configure(hair,fabric,Color("f2c39b"),int(look[0]),int(look[2]),-0.51)
 
 func door(i: int) -> Vector2:
@@ -80,8 +81,11 @@ func _ready():
 	sky_fill.light_specular = 0.0
 	sky_fill.sky_mode = DirectionalLight3D.SKY_MODE_LIGHT_ONLY
 	add_child(sky_fill)
-	add_child(village)
 	add_child(life)
+	if preload("res://natural_maps.gd").MAPS.has(life.map_id):
+		village.landscape=preload("res://natural_maps.gd").new(life.map_id,life.map_seed)
+		town.frontier=true
+	add_child(village)
 	player = CharacterBody3D.new()
 	add_child(player)
 	player.position = life.saved_position
@@ -132,22 +136,36 @@ func _ready():
 	graphics.quality_changed.connect(apply_graphics)
 	apply_graphics(graphics.level)
 	initialized = true
+	life.settlement.advance(life)
+	site.refresh()
 	update_world_ui()
 	if not FileAccess.file_exists(life.SAVE):
 		hud.show_note("Horta a leste · equipe a enxada")
 
 func configure_world_grid() -> void:
 	var grid=village.world_grid
+	if village.landscape:
+		# Move forage clear of shoreline and trunks before reserving its cell.
+		grid.reserve_box(Vector2(0,6),Vector2(2,2),"Chegada")
+		grid.reserve_box(Vector2(0,1),Vector2(8,4),"Acampamento dos visitantes")
 	# Resources, entrances and NPC travel graph share the same occupancy contract.
 	for bed in life.beds:
 		grid.reserve_box(Vector2(bed.position.x,bed.position.z),Vector2(1.15,1.15),"Horta")
 	for resource in life.resources:
 		var p: Vector3=resource.node.position
+		if village.landscape:
+			var cell:=Vector2i(roundi(p.x),roundi(p.z))
+			while grid.reserved.has(cell):
+				cell.x=wrapi(cell.x+1,-29,30)
+			resource.node.position=Vector3(cell.x,p.y,cell.y)
+			p=resource.node.position
 		grid.reserve_box(Vector2(p.x,p.z),Vector2(0.9,0.9),"Recurso")
 	for i in 7:
+		if town.frontier and i!=6: continue
 		var p := door(i)
 		grid.reserve_box(p+Vector2(0,0.35),Vector2(1.9,1.8),"Entrada")
 	for id in town.graph.get_point_ids():
+		if town.frontier: break
 		for neighbor in town.graph.get_point_connections(id):
 			if neighbor>id:
 				grid.reserve_line(town.graph.get_point_position(id),town.graph.get_point_position(neighbor),1.2,"Rota de moradores")
@@ -189,6 +207,7 @@ func close_social() -> void:
 
 func interact_focus() -> void:
 	match focus_kind:
+		"settler": home_ui.meet(focus_resident)
 		"chest": home_ui.open_chest(focus_index)
 		"bed":
 			life.advance(life.DAY_SECONDS-life.clock)
@@ -289,6 +308,7 @@ func update_world_ui() -> void:
 		if life.target>=0:
 			best = Vector2(player.position.x-life.marker.position.x,player.position.z-life.marker.position.z).length()
 		for i in 7:
+			if town.frontier and i!=6: continue
 			var distance := Vector2(player.position.x,player.position.z).distance_to(door(i))
 			if distance<best:
 				best = distance
@@ -304,6 +324,14 @@ func update_world_ui() -> void:
 			focus_kind = "person"
 			focus_index = i
 			hud.action.text = "Falar · "+str(life.social.PEOPLE[i][0])
+	if life.room==-1:
+		for actor in site.settlers.get_children():
+			var d:=Vector2(player.position.x-actor.position.x,player.position.z-actor.position.z).length()
+			if d<best:
+				best=d
+				focus_kind="settler"
+				focus_resident=actor.name
+				hud.action.text="Falar · "+str(life.settlement.PEOPLE[focus_resident][0])
 	if life.room==6 and (player.position-site.cabin.position-Vector3(-2.85,0.51,-1.35)).length()<1.9:
 		focus_kind="bed"
 		hud.action.text="Dormir até amanhã"
@@ -458,6 +486,7 @@ func apply_graphics(level: int) -> void:
 
 func save_game() -> void:
 	if initialized:
+		if life.settlement.advance(life): site.refresh()
 		if life.room<0: life.save_progress(player.position)
 		else:
 			var local := player.position-town.origin(life.room)
