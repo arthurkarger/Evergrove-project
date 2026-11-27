@@ -7,6 +7,8 @@ const TRAIL := "d2b58e"
 
 var meshes := {}
 var batches := {}
+var path_segments: Array = []
+var house_centers: Array[Vector2] = []
 var terrain := StaticBody3D.new()
 
 func _ready() -> void:
@@ -29,12 +31,13 @@ func _ready() -> void:
 	trunk.top_radius = 0.37
 	trunk.bottom_radius = 0.5
 	trunk.height = 1
-	meshes = {"box": BoxMesh.new(), "round": crown, "disc": disc, "pine": cone, "roof": PrismMesh.new(), "trunk": trunk, "ground": BoxMesh.new(), "water": disc, "shore": disc}
+	meshes = {"box": BoxMesh.new(), "round": crown, "disc": disc, "pine": cone, "roof": PrismMesh.new(), "trunk": trunk, "ground": BoxMesh.new(), "water": disc, "shore": disc, "grass": grass_mesh()}
 	build_paths()
 	build_homes()
 	build_lake()
 	build_groves()
 	garden_details()
+	plant_grass()
 	flush_batches()
 
 # Share primitive geometry and draw repeated scenery in spatial batches.
@@ -50,7 +53,7 @@ func landscape_material(water: bool) -> ShaderMaterial:
 	if water:
 		shader.code = """
 shader_type spatial;
-render_mode diffuse_burley, specular_disabled;
+render_mode diffuse_burley, specular_schlick_ggx;
 varying vec3 world_pos;
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -64,8 +67,12 @@ void fragment() {
 	vec3 c = mix(deep, shallow, smoothstep(0.20, 1.0, shore));
 	float wave = smoothstep(0.83, 0.98, ripple) * 0.075;
 	ALBEDO = c + vec3(wave);
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.0;
+	// Soft, moving surface normals catch the sun without screen-space reflection.
+	float nx = cos(p.x * 1.8 + p.y * 2.1 + TIME * 0.75) * 0.045;
+	float ny = sin(p.y * 1.7 - TIME * 0.48) * 0.045;
+	NORMAL = normalize(NORMAL + vec3(nx, ny, 0.0));
+	ROUGHNESS = 0.68;
+	SPECULAR = 0.20;
 }
 """
 	else:
@@ -85,8 +92,10 @@ void fragment() {
 	vec2 cell = floor(p * 2.4);
 	vec2 f = fract(p * 2.4) - 0.5;
 	float fleck = (1.0 - smoothstep(0.045, 0.13, length(f * vec2(0.85, 1.5)))) * step(0.79, hash(cell));
-	float shade = 0.035 * patch + 0.035 * fleck;
-	ALBEDO = vec3(0.32, 0.53, 0.24) + vec3(shade, shade, shade * 0.55);
+	float detail = hash(floor(p * 18.0)) - 0.5;
+	float mottling = sin(p.x * 3.0 + sin(p.y * 2.0)) * cos(p.y * 2.8);
+	float shade = 0.034 * patch + 0.021 * fleck + 0.011 * detail + 0.009 * mottling;
+	ALBEDO = vec3(0.35, 0.55, 0.27) + vec3(shade, shade, shade * 0.55);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -99,7 +108,16 @@ func flush_batches() -> void:
 	var material := StandardMaterial3D.new()
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
-	material.metallic_specular = 0.0
+	material.metallic_specular = 0.04
+	var grain := Image.create(64,64,false,Image.FORMAT_RGBA8)
+	for y in 64:
+		for x in 64:
+			var shade := 0.96 + 0.025*sin(float(x)*0.73+sin(float(y)*0.24))*cos(float(y)*0.47) + 0.012*sin(float(x*7+y*13))
+			grain.set_pixel(x,y,Color(shade,shade,shade))
+	grain.generate_mipmaps()
+	material.albedo_texture = ImageTexture.create_from_image(grain)
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var tuft_material := grass_shader()
 	var grass_material := landscape_material(false)
 	var water_material := landscape_material(true)
 	for key: String in batches:
@@ -122,6 +140,10 @@ func flush_batches() -> void:
 		elif kind == "water":
 			instance.material_override = water_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "grass":
+			instance.material_override = tuft_material
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			instance.extra_cull_margin = 0.35
 		elif kind == "shore":
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(instance)
@@ -137,6 +159,7 @@ func wall(pos: Vector3, size: Vector3, angle := 0.0) -> void:
 	terrain.add_child(collider)
 
 func path_between(a: Vector2, b: Vector2, width: float) -> void:
+	path_segments.append([a,b,width])
 	var mid := (a + b) / 2
 	var line := b - a
 	piece("box", Vector3(mid.x,0.014,mid.y), Vector3(width,0.02,line.length()), TRAIL, atan2(line.x,line.y))
@@ -185,6 +208,7 @@ func build_homes() -> void:
 		flowers(x,z,"edac69" if x < 4 else "e6b4af")
 
 func cottage(x: float,z: float,roof: String,plaster: String) -> void:
+	house_centers.append(Vector2(x,z))
 	var center := Vector3(x,1.22,z)
 	piece("box",center,Vector3(4.4,2.44,3.4),plaster)
 	wall(center,Vector3(4.4,2.44,3.4))
@@ -316,3 +340,81 @@ func garden_details() -> void:
 			piece("round",center,Vector3(0.77,0.62,0.72),["719954","83a862","658b4f"][j])
 			if j==1:
 				piece("round",center+Vector3(0.04,0.26,0.18),Vector3(0.18,0.13,0.18),"edb4a0")
+
+# Five curved, tapered blades per tuft, shared across all the patches.
+func grass_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in 5:
+		var angle := i*2.39996
+		var outward := Vector3(cos(angle),0,sin(angle))
+		var across := Vector3(-sin(angle),0,cos(angle))
+		var base := outward*0.13
+		var mid := base + outward*0.17 + Vector3.UP*(0.44+0.07*(i%3))
+		var tip := base + outward*0.36 + Vector3.UP*(0.77+0.09*(i%3))
+		var a := base-across*0.09
+		var b := base+across*0.09
+		var c := mid-across*0.055
+		var d := mid+across*0.055
+		for v in [a,b,c,b,d,c,c,d,tip]:
+			st.set_normal(Vector3.UP)
+			st.add_vertex(v)
+	return st.commit()
+
+func grass_shader() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode cull_disabled, diffuse_burley, specular_disabled;
+varying float height;
+varying vec3 tint;
+void vertex() {
+	height = VERTEX.y;
+	tint = COLOR.rgb;
+	vec3 p = MODEL_MATRIX[3].xyz;
+	float wind = sin(TIME * 1.45 + p.x * 0.55 + p.z * 0.71);
+	VERTEX.x += wind * height * height * 0.15;
+	VERTEX.z += cos(TIME * 1.1 + p.z * 0.64) * height * height * 0.08;
+}
+void fragment() {
+	ALBEDO = tint * mix(0.72, 1.12, clamp(height, 0.0, 1.0));
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	return mat
+
+func clear_for_grass(p: Vector2) -> bool:
+	if Rect2(-5,16,11,7).has_point(p) or Rect2(2,3.5,7,6).has_point(p):
+		return false
+	if ((p-Vector2(22,-7))/Vector2(6.7,8.8)).length() < 1.04:
+		return false
+	if ((p-Vector2(0,2))/Vector2(6.4,4.8)).length() < 1.0:
+		return false
+	for segment in path_segments:
+		var nearest := Geometry2D.get_closest_point_to_segment(p,segment[0],segment[1])
+		if p.distance_to(nearest) < float(segment[2])*0.5+0.55:
+			return false
+	for h in house_centers:
+		if absf(p.x-h.x)<3.1 and absf(p.y-h.y)<2.8:
+			return false
+	return true
+
+func plant_grass() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 60621
+	var patches := [Vector2(-18,-14),Vector2(-8,-17),Vector2(6,-15),Vector2(14,-17),
+		Vector2(-26,-4),Vector2(-16,9),Vector2(-24,17),Vector2(-12,20),
+		Vector2(9,12),Vector2(21,16),Vector2(28,6),Vector2(13,2),
+		Vector2(-6,5),Vector2(4,-5),Vector2(-17,-3),Vector2(18,3)]
+	for center in patches:
+		for i in 54:
+			var angle := rng.randf_range(0.0,TAU)
+			var radius := sqrt(rng.randf())*2.65
+			var p: Vector2 = center+Vector2(cos(angle),sin(angle))*radius
+			if not clear_for_grass(p): continue
+			var h := rng.randf_range(0.16,0.42)
+			var w := rng.randf_range(0.28,0.58)
+			piece("grass",Vector3(p.x,0.005,p.y),Vector3(w,h,w),["668d42","7c9f50","90ad5c","73984a"][rng.randi_range(0,3)],angle)
