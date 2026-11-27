@@ -12,6 +12,7 @@ var world_materials: Array[ShaderMaterial] = []
 var scenic_material: StandardMaterial3D
 var contact_batches: Array[MultiMeshInstance3D] = []
 var contact_material: ShaderMaterial
+var lantern_material: StandardMaterial3D
 var foliage_batches: Array[MultiMeshInstance3D] = []
 var foliage_material: ShaderMaterial
 var surface_materials: Dictionary = {}
@@ -48,6 +49,7 @@ func _ready() -> void:
 	var contact_plane := PlaneMesh.new()
 	contact_plane.size = Vector2.ONE
 	meshes["contact"] = contact_plane
+	meshes["lantern_glass"] = BoxMesh.new()
 	build_paths()
 	build_homes()
 	build_lake()
@@ -172,6 +174,12 @@ func flush_batches() -> void:
 	material.albedo_texture = ImageTexture.create_from_image(grain)
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	contact_material = make_contact_material()
+	lantern_material = StandardMaterial3D.new()
+	lantern_material.albedo_color = Color("ffd99b")
+	lantern_material.roughness = 0.85
+	lantern_material.emission_enabled = true
+	lantern_material.emission = Color("ffbd65")
+	lantern_material.emission_energy_multiplier = 0.0
 	var tuft_material := grass_shader()
 	var grass_material := landscape_material(false)
 	var water_material := landscape_material(true)
@@ -199,6 +207,9 @@ func flush_batches() -> void:
 		elif kind == "water":
 			instance.material_override = water_material
 			instance.layers = 2
+			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "lantern_glass":
+			instance.material_override = lantern_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif kind == "contact":
 			instance.material_override = contact_material
@@ -513,7 +524,7 @@ func build_lamps() -> void:
 		var base := Vector3(p.x,0,p.y)
 		piece("trunk",base+Vector3.UP*0.85,Vector3(0.16,1.70,0.16),"534a41")
 		piece("disc",base+Vector3.UP*0.10,Vector3(0.39,0.20,0.39),"534a41")
-		piece("box",base+Vector3.UP*1.77,Vector3(0.29,0.33,0.29),"e4bf79")
+		piece("lantern_glass",base+Vector3.UP*1.77,Vector3(0.29,0.33,0.29),"e4bf79")
 		piece("pine",base+Vector3.UP*2.02,Vector3(0.43,0.28,0.43),"51483e")
 		var lamp := OmniLight3D.new()
 		lamp.position = base+Vector3.UP*1.65
@@ -547,6 +558,8 @@ func set_quality(level: int) -> void:
 
 func update_lamps(daylight: float) -> void:
 	var energy := (1.0-daylight)*0.9
+	if lantern_material != null:
+		lantern_material.emission_energy_multiplier = (1.0-daylight)*(1.5 if quality_level==3 else 0.65)
 	for lamp in lamps:
 		lamp.light_energy = energy
 
