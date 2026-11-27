@@ -105,19 +105,28 @@ func model(id: String,preview: bool,completed := false) -> Node3D:
 						t.furnish(node,Vector3(x*(width/2-0.14),0.28,z*1.45),Vector3(0.16,0.56,0.16),"a6825c",not preview)
 				t.furnish(node,Vector3(0,0.48,-1.45),Vector3(width,0.12,0.13),"d8ba89")
 		"tree":
-			rounded(node,Vector3.UP*0.68,Vector3(0.36,1.36,0.36),"876341",true)
-			rounded(node,Vector3.UP*1.68,Vector3(1.85,1.65,1.8),"79a85c")
-			if not preview: prop_collision(node,Vector3.UP*0.65,Vector3(0.36,1.3,0.36))
+			if preload("res://blender_models.gd").mount(node,"tree",Vector3.ONE*0.8):
+				if not preview: prop_collision(node,Vector3.UP*0.65,Vector3(0.36,1.3,0.36))
+			else:
+				rounded(node,Vector3.UP*0.68,Vector3(0.36,1.36,0.36),"876341",true)
+				rounded(node,Vector3.UP*1.68,Vector3(1.85,1.65,1.8),"79a85c")
+				if not preview: prop_collision(node,Vector3.UP*0.65,Vector3(0.36,1.3,0.36))
 		"path": t.furnish(node,Vector3.UP*0.045,Vector3(0.96,0.08,0.96),"bbad91")
 		"chest":
-			t.furnish(node,Vector3.UP*0.34,Vector3(0.88,0.68,0.76),"92704e",not preview)
-			t.furnish(node,Vector3.UP*0.72,Vector3(0.94,0.16,0.8),"bc9568")
-			t.furnish(node,Vector3(0,0.57,0.395),Vector3(0.14,0.18,0.06),"e6c482")
+			if preload("res://blender_models.gd").mount(node,id):
+				if not preview: prop_collision(node,Vector3.UP*0.34,Vector3(0.88,0.68,0.76))
+			else:
+				t.furnish(node,Vector3.UP*0.34,Vector3(0.88,0.68,0.76),"92704e",not preview)
+				t.furnish(node,Vector3.UP*0.72,Vector3(0.94,0.16,0.8),"bc9568")
+				t.furnish(node,Vector3(0,0.57,0.395),Vector3(0.14,0.18,0.06),"e6c482")
 		"table","bench":
-			var w := 1.82 if id=="bench" else 0.92
-			for x in [-w*0.36,w*0.36]: t.furnish(node,Vector3(x,0.25,0),Vector3(0.2,0.5,0.65),"94704c")
-			t.furnish(node,Vector3.UP*0.54,Vector3(w,0.15,0.8),"c19768",not preview)
-			if id=="bench": t.furnish(node,Vector3(0,0.83,-0.31),Vector3(w,0.37,0.13),"a88052")
+			if preload("res://blender_models.gd").mount(node,id):
+				if not preview: prop_collision(node,Vector3.UP*0.54,Vector3(1.82 if id=="bench" else 0.92,0.15,0.8))
+			else:
+				var w := 1.82 if id=="bench" else 0.92
+				for x in [-w*0.36,w*0.36]: t.furnish(node,Vector3(x,0.25,0),Vector3(0.2,0.5,0.65),"94704c")
+				t.furnish(node,Vector3.UP*0.54,Vector3(w,0.15,0.8),"c19768",not preview)
+				if id=="bench": t.furnish(node,Vector3(0,0.83,-0.31),Vector3(w,0.37,0.13),"a88052")
 		"fence":
 			for x in [-0.84,0.84]: t.furnish(node,Vector3(x,0.5,0),Vector3(0.2,1,0.2),"93704d")
 			for y in [0.35,0.72]: t.furnish(node,Vector3(0,y,0),Vector3(1.88,0.16,0.14),"b79469",not preview)
@@ -170,6 +179,7 @@ func garden_model(node: Node3D,id: String,preview: bool) -> void:
 	match id:
 		"flower":
 			rounded(node,Vector3(0,0.12,0),Vector3(0.83,0.24,0.83),"a88963",true)
+			if preload("res://blender_models.gd").mount(node,"wildflowers",Vector3(1.35,1.2,1.35)): return
 			for i in 5:
 				var a := i*TAU/5
 				var p := Vector3(cos(a)*0.25,0.32,sin(a)*0.25)
@@ -223,6 +233,7 @@ func refresh() -> void:
 
 func add_settler(who: String,p: Vector3) -> void:
 	var actor:=preload("res://cozy_character.gd").new()
+	actor.autonomous_idle=true
 	actor.name=who
 	settlers.add_child(actor)
 	actor.position=p+Vector3.UP*0.93

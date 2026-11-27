@@ -8,12 +8,14 @@ static var foot_mesh: PlaneMesh
 static var foot_material: ShaderMaterial
 var foot_shadow: MeshInstance3D
 var body: Node3D
+var scarf_tail: MeshInstance3D
 var legs: Array[Node3D] = []
 var arms: Array[Node3D] = []
 var walk_time := 0.0
 var ground_offset := 0.0
 var eyes: Array[MeshInstance3D] = []
 var eye_scales: Array[Vector3] = []
+var autonomous_idle := false
 var idle_time := 0.0
 var movement_weight := 0.0
 
@@ -90,6 +92,7 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	arms.clear()
 	eyes.clear()
 	eye_scales.clear()
+	scarf_tail=null
 	ground_offset = offset
 	body.position.y = offset
 	add_child(body)
@@ -99,6 +102,12 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 	var vivid := Color.from_hsv(shirt.h,clampf(shirt.s*1.17,0.0,0.93),shirt.v,shirt.a)
 	var cloth := vivid if outfit!=2 else vivid.lightened(0.08)
 	shape(body,"Torso",Vector3(0,0.78,0),Vector3(0.57,0.62,0.38),cloth,true,true)
+	if outfit==0:
+		shape(body,"Pocket",Vector3(-0.104,0.84,0.176),Vector3(0.16,0.14,0.044),cloth.lightened(0.13),true)
+	if outfit==1:
+		for side in [-1,1]:
+			var strap:=shape(body,"Strap",Vector3(side*0.126,0.969,0.147),Vector3(0.067,0.183,0.046),pants,true)
+			strap.rotation.z=side*-0.25
 	shape(body,"Collar",Vector3(0,1.04,0.11),Vector3(0.30,0.10,0.26),cloth.lightened(0.25),true)
 	for side in [-1,1]:
 		var leg := Node3D.new()
@@ -145,7 +154,10 @@ func configure(hair: Color, shirt: Color, skin: Color, hairstyle: int, outfit: i
 		shape(body,"Overall bib",Vector3(0,0.81,0.18),Vector3(0.37,0.39,0.06),pants,true)
 	elif outfit==2:
 		shape(body,"Scarf",Vector3(0,1.04,0.17),Vector3(0.43,0.15,0.16),Color("e5bb77"),true)
-		shape(body,"Scarf tail",Vector3(0.12,0.91,0.20),Vector3(0.14,0.25,0.055),Color("e5bb77"),true)
+		scarf_tail=shape(body,"Scarf tail",Vector3(0.12,0.91,0.20),Vector3(0.14,0.25,0.055),Color("e5bb77"),true)
+
+func _process(delta: float) -> void:
+	if autonomous_idle and is_visible_in_tree(): pose(Vector2.ZERO,delta)
 
 func pose(direction: Vector2, delta: float) -> void:
 	var moving := direction.length_squared()>0.01
@@ -165,7 +177,10 @@ func pose(direction: Vector2, delta: float) -> void:
 		legs[i].rotation.x = lerpf(legs[i].rotation.x,swing*side,minf(delta*16.0,1.0))
 		arms[i].rotation.x = lerpf(arms[i].rotation.x,-swing*side*0.72,minf(delta*16.0,1.0))
 	body.position.y = ground_offset + absf(sin(walk_time))*0.042*movement_weight
-	body.rotation.z=sin(walk_time)*0.035*movement_weight
+	body.rotation.z=sin(walk_time)*0.043*movement_weight
+	body.rotation.y=sin(walk_time)*0.07*movement_weight + sin(idle_time*1.03)*0.025*(1.0-movement_weight)
+	if is_instance_valid(scarf_tail):
+		scarf_tail.rotation.z=0.1+0.12*sin(walk_time-0.6)*movement_weight+0.035*sin(idle_time*2.1)
 	body.scale.y=1.0+sin(idle_time*2.4)*0.006*(1.0-movement_weight)
 
 static func set_quality(level: int) -> void:

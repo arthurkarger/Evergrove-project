@@ -54,7 +54,10 @@ jobs:
           done
       - name: Import project
         shell: bash
-        run: godot --headless --editor --path . --import
+        run: |
+          godot --headless --editor --path . --import
+          python3 tools/compress_model_textures.py
+          godot --headless --editor --path . --import
       - name: Verify imported Blender models are used in game
         shell: bash
         run: |
@@ -109,6 +112,21 @@ jobs:
           godot --headless --path . --script res://tests/graphics.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-graphics.log"
           grep -Fx 'Graphics integration failures: 0' "$RUNNER_TEMP/evergrove-graphics.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-graphics.log"; then exit 1; fi
+      - name: Render all presets using the Mobile renderer
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-render-profile
+          EVERGROVE_PREVIEWS: ${{ runner.temp }}/evergrove-previews
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers
+          xvfb-run -a godot --rendering-method mobile --rendering-driver vulkan --audio-driver Dummy --resolution 960x540 --path . --script res://tests/render_visuals.gd 2>&1 | tee "$RUNNER_TEMP/render.log"
+          grep -Fx 'Rendered preset failures: 0' "$RUNNER_TEMP/render.log"
+          if grep -E '^(SCRIPT ERROR|SHADER ERROR|ERROR):' "$RUNNER_TEMP/render.log"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Evergrove-Visual-Previews
+          path: ${{ runner.temp }}/evergrove-previews/*.png
       - name: Export and verify signed release APK
         shell: bash
         env:

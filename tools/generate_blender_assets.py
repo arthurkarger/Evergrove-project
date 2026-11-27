@@ -1,5 +1,6 @@
 """Generate original, low-poly Evergrove props using Blender's Python API."""
 import bpy
+import numpy as np
 import math
 import random
 import json
@@ -16,29 +17,47 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 def material(name, rgb, seed):
-    rng = random.Random(seed)
+    rng = np.random.default_rng(seed)
     mat = bpy.data.materials.new(name)
     mat.diffuse_color = (*rgb, 1)
     mat.use_nodes = True
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
-    bsdf.inputs["Roughness"].default_value = 0.95
-    img = bpy.data.images.new(name + "_pixels", width=128, height=128, alpha=False)
-    pixels = []
-    for y in range(128):
-        for x in range(128):
-            shade = 0.96 + 0.06*rng.random() + 0.025*math.sin(x*.25+y*.14)
-            if name in ("Wood", "Roof"):
-                shade += .025*math.sin(x*1.7+math.sin(y*.15))
-                if y % 32 < 3: shade *= .88
-            if name.startswith("Leaf"):
-                shade += .035*math.sin(x*.31)*math.sin(y*.26)+.025*math.cos((x+y)*.53)
-            pixels.extend([min(1, c*shade) for c in rgb] + [1])
-    img.pixels = pixels
-    img.pack()
-    tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-    tex.image = img
-    tex.interpolation = "Linear"
-    mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+    nodes = mat.node_tree.nodes
+    links = mat.node_tree.links
+    bsdf = nodes.get("Principled BSDF")
+    bsdf.inputs["Roughness"].default_value = {"Glass": .26, "Roof": .77, "Wood": .83}.get(name, .93)
+    size = 256 if name in ("Wood", "Stone", "Roof", "Plaster") else 128
+    y, x = np.mgrid[:size,:size] * (math.tau / size)
+    relief = .22*np.sin(x*3+np.sin(y*2)) * np.cos(y*4)
+    if name in ("Wood", "Support"):
+        grain = x*11 + 2*np.sin(y+np.sin(x)) + .6*np.sin(y*3+x*2)
+        relief = .55*np.sin(grain)+.23*np.sin(grain*3)+.13*np.cos(grain*7)
+    elif name == "Roof":
+        row = np.floor(y/math.tau*4)
+        relief = .7*np.minimum(1,np.abs(np.sin(y*2))*9) + .35*np.minimum(1,np.abs(np.sin(x*4+row*math.pi/2))*10)-.7
+    elif name == "Stone":
+        relief += .5*np.sin(x*2+np.sin(y*3)) + .13*np.cos(x*11-y*5)
+    elif name.startswith(("Leaf","Needles")):
+        relief = .48*np.sin(x*5+np.sin(y*3))*np.cos(y*6)+.27*np.sin(2*x-y)
+    relief += rng.uniform(-.12,.12,(size,size))
+    def texture(suffix, values, noncolor=False):
+        img = bpy.data.images.new(name+suffix,width=size,height=size,alpha=False)
+        if noncolor: img.colorspace_settings.name = "Non-Color"
+        rgba = np.ones((size,size,4),dtype=np.float32)
+        rgba[:,:,:3] = np.clip(values,0,1)
+        img.pixels.foreach_set(rgba.ravel())
+        img.pack()
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = img
+        return tex.outputs["Color"]
+    links.new(texture("_paint",np.asarray(rgb)*(1+.16*relief[:,:,None])),bsdf.inputs["Base Color"])
+    if name in ("Wood","Stone","Roof","Plaster","Support"):
+        dx = (np.roll(relief,1,1)-np.roll(relief,-1,1))*.35
+        dy = (np.roll(relief,1,0)-np.roll(relief,-1,0))*.35
+        normal = np.stack([dx,dy,np.ones_like(dx)],axis=-1)
+        normal /= np.linalg.norm(normal,axis=-1,keepdims=True)
+        bump = nodes.new("ShaderNodeNormalMap")
+        links.new(texture("_normal",normal*.5+.5,True),bump.inputs["Color"])
+        links.new(bump.outputs["Normal"],bsdf.inputs["Normal"])
     return mat
 
 def paint(obj, mat, name):
@@ -63,9 +82,10 @@ def cone(name, loc, r1, r2, depth, mat, vertices=7):
     return paint(bpy.context.object, mat, name)
 
 def rock(name, loc, size, mat):
-    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=1, radius=1, location=loc)
+    bpy.ops.mesh.primitive_ico_sphere_add(subdivisions=2, radius=1, location=loc)
     obj = bpy.context.object
     obj.scale = size
+    for poly in obj.data.polygons: poly.use_smooth=True
     return paint(obj, mat, name)
 
 def srgb(hex_color):
@@ -107,6 +127,17 @@ def house(roof_color=(.48,.16,.12), wall_color=(.81,.66,.43)):
         box("Window",(x,-1.28,1.35),(.49,.045,.56),glass)
         box("Mullion",(x,-1.31,1.35),(.065,.045,.56),wood)
         box("Sill",(x,-1.32,1.06),(.72,.22,.09),wood)
+    # A curved ridge, shutters and a small canopy give the facade depth.
+    ridge=cone("Ceramic ridge",(0,0,2.91),.115,.115,3.52,roof,12)
+    ridge.rotation_euler.y=math.pi/2
+    box("Porch canopy",(0,-1.45,1.65),(1.2,.66,.12),roof,(.12,0,0))
+    for x in (-.5,.5):
+        box("Porch bracket",(x,-1.34,1.48),(.08,.33,.09),wood,(.58,0,0))
+    for x in (-.99,.99):
+        for side in (-1,1):
+            box("Shutter",(x+side*.38,-1.23,1.35),(.14,.08,.71),roof)
+        box("Window crossbar",(x,-1.32,1.38),(.52,.05,.055),wood)
+    rock("Latch",(.23,-1.29,.89),(.04,.035,.04),stone)
     box("Chimney",(.95,.45,2.72),(.38,.42,1.0),stone)
     box("Chimney cap",(.95,.45,3.2),(.49,.52,.13),stone)
 
@@ -128,6 +159,13 @@ def tree(fruit=False):
             p *= 1+.045*math.sin(p.x*8+p.z*5)*math.cos(p.y*7)
         for poly in obj.data.polygons: poly.use_smooth=True
         paint(obj,mat,"Canopy")
+    for side in (-1,1):
+        fork=cone("Branch",(side*.23,0,1.21),.11,.07,.68,bark,10)
+        fork.rotation_euler.y=side*.65
+    for j in range(9):
+        a=j*2.4
+        rock("Crown lobe",(.69*math.cos(a),.59*math.sin(a),1.92+.38*math.sin(a*2)),
+             (.33,.32,.35),leaf2 if j%3==0 else leaf1)
     if fruit:
         apple=material("Apple",(.72,.22,.08),14)
         for loc in [(-.72,-.57,1.7),(.58,-.52,1.8),(.82,.18,1.86)]:
@@ -140,18 +178,23 @@ def pine():
     for i, color in enumerate(["50785c","628567","769672"]):
         leaf=material("Needles"+str(i),srgb(color),20+i)
         obj=cone("Needles",(0,0,1.9+i*.76),1.45-i*.305,.075,2,leaf,vertices=24)
+        for vert in obj.data.vertices:
+            a=math.atan2(vert.co.y,vert.co.x)
+            if vert.co.z<0:
+                vert.co.z+=.13*math.cos(6*a+i)
+                vert.co.x*=1+.045*math.sin(5*a)
         for poly in obj.data.polygons:
-            if len(poly.vertices)==4: poly.use_smooth=True
+            if len(poly.vertices)<=4: poly.use_smooth=True
 
 def character_part(kind):
     mat=material("Neutral",(.7,.7,.7),40)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=16,ring_count=12,radius=.5)
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=24,ring_count=14,radius=.5)
     obj=bpy.context.object
     for vert in obj.data.vertices:
         x,y,z=vert.co
         if kind=="head":
             # Round forehead and cheeks, slightly narrower jaw.
-            x *= 1+.17*z-.18*max(0,-z)*2
+            x *= 1+.23*math.exp(-((z+.13)/.18)**2)-.21*max(0,-z)*2
             y *= 1-.12*max(0,-z)*2
         elif kind=="torso":
             x *= 1+.24*z
@@ -163,7 +206,7 @@ def character_part(kind):
             y *= 1-.25*z
         elif kind=="hair":
             z=math.copysign(.5*(abs(z)*2)**.82,z)
-            y *= 1+.07*math.cos(x*12)
+            y *= 1+.12*math.cos(x*12+z*4)
         vert.co=(x,y,z)
     for axis in range(3):
         lo=min(v.co[axis] for v in obj.data.vertices)
@@ -186,6 +229,49 @@ def bench():
     for x in (-.79,.79):
         box("Armrest",(x,0,.76),(.13,.56,.12),dark)
         box("Arm support",(x,-.19,.62),(.10,.10,.26),dark)
+
+def wildflowers():
+    green=material("Leaf",srgb("6e9851"),75)
+    cream=material("Petal",srgb("fff0b7"),76)
+    amber=material("Pollen",srgb("e99e41"),77)
+    for j in range(3):
+        x=.22*math.cos(j*2.4)
+        y=.2*math.sin(j*2.4)
+        h=.35+.09*j
+        cone("Stem",(x,y,h/2),.018,.011,h,green,8)
+        rock("Basal leaf",(x+.055,y,h*.43),(.115,.05,.045),green).rotation_euler.y=-.52
+        for k in range(6):
+            a=k*math.tau/6+j
+            petal=rock("Petal",(x+.086*math.cos(a),y+.086*math.sin(a),h),(.096,.047,.035),cream)
+            petal.rotation_euler.z=a
+        rock("Flower heart",(x,y,h+.026),(.057,.057,.038),amber)
+
+def river_stones():
+    stone=material("Stone",srgb("88999c"),78)
+    moss=material("Leaf",srgb("90a361"),79)
+    for x,y,z,w in [(0,0,.21,.47),(.32,.14,.12,.22),(-.28,-.16,.085,.18)]:
+        obj=rock("River stone",(x,y,z),(w,w*.79,w*.7),stone)
+        for v in obj.data.vertices:
+            v.co.z=max(-.55,v.co.z)
+            v.co.x+=.1*math.sin(v.co.y*4)
+        rock("Lichen",(x-.04,y+.02,z+w*.63),(w*.45,w*.38,.04),moss)
+
+def furniture(kind):
+    wood=material("Wood",srgb("bb8a59"),90)
+    trim=material("Support",srgb("77503d"),91)
+    if kind=="chest":
+        box("Chest carcass",(0,0,.32),(.88,.73,.6),wood)
+        box("Rounded lid",(0,0,.66),(.95,.79,.16),wood)
+        for x in (-.29,.29):
+            box("Binding",(x,0,.75),(.055,.77,.035),trim)
+            box("Front binding",(x,-.37,.32),(.055,.025,.58),trim)
+        box("Latch",(0,-.403,.55),(.14,.045,.14),trim)
+    else:
+        for x in (-.34,.34):
+            for y in (-.30,.30):
+                cone("Turned leg",(x,y,.26),.075,.095,.52,trim,12)
+        for j in range(4):
+            box("Table plank",(0,(j-1.5)*.2,.54),(.94,.194,.13),wood)
 
 def export(name):
     meshes=[o for o in bpy.context.scene.objects if o.type=="MESH"]
@@ -243,7 +329,8 @@ if GAME:
         reset()
         house(srgb(roof),srgb(wall))
         export("house_"+roof)
-    for name,build in [("tree",tree),("pine",pine),("fruit_tree",lambda:tree(True)),("bench",bench)]:
+    for name,build in [("tree",tree),("pine",pine),("fruit_tree",lambda:tree(True)),("bench",bench),("wildflowers",wildflowers),("river_stones",river_stones),
+                       ("table",lambda:furniture("table")),("chest",lambda:furniture("chest"))]:
         reset()
         build()
         export(name)

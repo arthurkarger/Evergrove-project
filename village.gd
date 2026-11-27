@@ -24,6 +24,13 @@ var foliage_batches: Array[MultiMeshInstance3D] = []
 var foliage_material: ShaderMaterial
 var surface_materials: Dictionary = {}
 var lake_probe: ReflectionProbe
+var water_surfaces: Array[MultiMeshInstance3D] = []
+var water_simple: ShaderMaterial
+var water_clear: ShaderMaterial
+var wind_materials: Array[ShaderMaterial] = []
+var tree_meshes := {}
+var shafts: Array[MultiMeshInstance3D] = []
+var shaft_material:=ShaderMaterial.new()
 var lake_material: ShaderMaterial
 var probe_period := -1
 var lamps: Array[OmniLight3D] = []
@@ -56,6 +63,8 @@ func _ready() -> void:
 	var contact_plane := PlaneMesh.new()
 	contact_plane.size = Vector2.ONE
 	meshes["contact"] = contact_plane
+	meshes["sunshaft"]=QuadMesh.new()
+	shaft_material.shader=preload("res://shaders/sunshaft.gdshader")
 	meshes["lantern_glass"] = BoxMesh.new()
 	if landscape:
 		landscape.render(self)
@@ -87,7 +96,7 @@ func imported_model(name: String, pos: Vector3, size: Vector3) -> bool:
 		return false
 	var key := "%s:%d:%d" % [name, floori(pos.x/16), floori(pos.z/16)]
 	if not imported_groups.has(key):
-		imported_groups[key] = {"parts": parts, "transforms": []}
+		imported_groups[key] = {"name":name,"parts": parts, "transforms": []}
 	imported_groups[key]["transforms"].append(Transform3D(Basis.from_scale(size), pos))
 	imported_counts[name] = int(imported_counts.get(name, 0)) + 1
 	return true
@@ -98,7 +107,7 @@ func flush_imported() -> void:
 		for part in group["parts"]:
 			var mm := MultiMesh.new()
 			mm.transform_format = MultiMesh.TRANSFORM_3D
-			mm.mesh = part[0] as Mesh
+			mm.mesh = wind_mesh(part[0]) if group.name in ["tree","pine","fruit_tree"] else part[0]
 			mm.instance_count = transforms.size()
 			var local: Transform3D = part[1]
 			for i in transforms.size():
@@ -110,13 +119,32 @@ func flush_imported() -> void:
 			blender_batches.append(instance)
 	imported_groups.clear()
 
-func landscape_material(water: bool) -> ShaderMaterial:
+func wind_mesh(original: Mesh) -> Mesh:
+	if tree_meshes.has(original): return tree_meshes[original]
+	var mesh:=original.duplicate() as Mesh
+	for i in mesh.get_surface_count():
+		var paint:=mesh.surface_get_material(i) as StandardMaterial3D
+		if paint==null or not (paint.resource_name.begins_with("Leaf") or paint.resource_name.begins_with("Needles")): continue
+		var wind:=ShaderMaterial.new()
+		wind.shader=preload("res://shaders/canopy.gdshader")
+		wind.set_shader_parameter("paint",paint.albedo_texture)
+		mesh.surface_set_material(i,wind)
+		wind_materials.append(wind)
+	tree_meshes[original]=mesh
+	return mesh
+
+func landscape_material(water: bool, refract := false) -> ShaderMaterial:
 	var shader := Shader.new()
 	if water:
 		shader.code = """
 shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 uniform int quality = 2;
+#ifdef CLEAR_WATER
+uniform sampler2D scenery : hint_screen_texture, repeat_disable, filter_linear;
+#endif
+uniform bool mapped_shore = false;
+uniform sampler2D shore_map : repeat_disable, filter_linear;
 uniform vec4 sky_tint : source_color = vec4(0.55,0.72,0.82,1.0);
 uniform float daylight = 1.0;
 varying vec3 world_pos;
@@ -136,6 +164,10 @@ void fragment() {
 	float wave_b = sin(b+0.50*sin(a*0.72));
 	float wave_c = sin(c+wave_b);
 	float depth = 1.0-smoothstep(0.18,1.0,shore);
+	if (mapped_shore) {
+		depth = texture(shore_map,(p+vec2(30.5,23.5))/vec2(61.,47.)).r;
+		shore = 1.0-depth;
+	}
 	vec3 sand = vec3(0.25,0.65,0.49);
 	vec3 deep = vec3(0.035,0.31,0.46);
 	vec3 water = mix(sand,deep,depth);
@@ -164,7 +196,14 @@ void fragment() {
 	water = mix(water,sky_tint.rgb, (0.09+fresnel*0.32)*(quality>=2?1.0:0.35));
 	ALBEDO = water + vec3(crest*0.78,crest,crest*0.94);
 	ROUGHNESS = quality==3 ? 0.22+0.12*(1.0-wave_a)*0.5 : (quality==2?0.37:0.83);
-	METALLIC = quality>=2 ? 0.28 : 0.0;
+	METALLIC = 0.0;
+#ifdef CLEAR_WATER
+	vec2 bend = (mat3(VIEW_MATRIX)*vec3(nx,0.,nz)).xy * (.006+.014*depth);
+	vec3 riverbed = texture(scenery,clamp(SCREEN_UV+bend,vec2(.001),vec2(.999))).rgb;
+	float opacity = mix(.42,.88,depth) + fresnel*.07;
+	ALBEDO *= opacity;
+	EMISSION = riverbed*(1.-opacity);
+#endif
 	SPECULAR = quality>=2 ? 0.48 : 0.0;
 }
 """
@@ -198,12 +237,14 @@ void fragment() {
 	if (has_art_grass && quality > 0) {
 		grass_base = mix(grass_base, texture(art_grass, p * 0.5).rgb, 0.65);
 	}
-	ALBEDO = grass_base + vec3(shade, shade, shade * 0.55);
+	ALBEDO = grass_base * mix(vec3(1.),COLOR.rgb / vec3(.58,.71,.47),0.28) + vec3(shade, shade, shade * 0.55);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
 """
 	var result := ShaderMaterial.new()
+	if water and refract:
+		shader.code=shader.code.replace("shader_type spatial;","shader_type spatial;\n#define CLEAR_WATER")
 	result.shader = shader
 	if not water:
 		var grass := preload("res://art_assets.gd").surface("grass")
@@ -235,11 +276,17 @@ func flush_batches() -> void:
 	lantern_material.emission_energy_multiplier = 0.0
 	var tuft_material := grass_shader()
 	var grass_material := landscape_material(false)
-	var water_material := landscape_material(true)
-	lake_material = water_material
+	water_simple=landscape_material(true)
+	water_clear=landscape_material(true,true)
+	if landscape:
+		var depth: ImageTexture=landscape.depth_texture()
+		for mat in [water_simple,water_clear]:
+			mat.set_shader_parameter("shore_map",depth)
+			mat.set_shader_parameter("mapped_shore",true)
+	lake_material=water_clear
 	foliage_material = make_foliage_material()
 	surface_materials = {"bark":make_surface_material(0),"stone":make_surface_material(1),"path_box":make_surface_material(2),"path_disc":make_surface_material(2),"roof_tiles":make_surface_material(3),"wood":make_surface_material(4)}
-	world_materials = [grass_material,water_material,tuft_material]
+	world_materials = [grass_material,water_simple,water_clear,tuft_material]
 	for key: String in batches:
 		var items: Array = batches[key]
 		var batch := MultiMesh.new()
@@ -258,9 +305,14 @@ func flush_batches() -> void:
 			instance.material_override = grass_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif kind == "water":
-			instance.material_override = water_material
+			water_surfaces.append(instance)
+			instance.material_override = lake_material
 			instance.layers = 2
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif kind == "sunshaft":
+			instance.material_override=shaft_material
+			instance.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			shafts.append(instance)
 		elif kind == "lantern_glass":
 			instance.material_override = lantern_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -435,6 +487,11 @@ func build_lake() -> void:
 
 func tree(x: float,z: float,s: float,kind: int) -> void:
 	var base := Vector3(x,0,z)
+	if posmod(roundi(x*3+z),7)==0:
+		var key: String="sunshaft:%d:%d" % [floori(x/16),floori(z/16)]
+		if not batches.has(key): batches[key]=[]
+		var beam:=Basis(Vector3.BACK,-0.48)*Basis.from_scale(Vector3(0.85,3.6,1.0)*s)
+		batches[key].append([Transform3D(beam,base+Vector3(-0.5,1.6,0)*s),Color.WHITE])
 	world_grid.reserve_box(Vector2(x,z),Vector2(1.6,1.6)*s,"Árvore")
 	contact_at(Vector2(x,z),Vector2(2.6,2.4)*s,0.058)
 	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
@@ -636,7 +693,12 @@ func build_lamps() -> void:
 
 func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)
+	lake_material=water_clear if quality_level>=2 else water_simple
+	for water in water_surfaces: water.material_override=lake_material
+	for shaft in shafts: shaft.visible=quality_level==3
+	for mat in wind_materials: mat.set_shader_parameter("quality",quality_level)
 	for batch in blender_batches:
+		batch.lod_bias=[0.45,0.70,1.0,1.45][quality_level]
 		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level>=2 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var density := [0.0,0.25,0.55,1.0]
 	for batch in contact_batches: batch.visible = quality_level>=1
@@ -647,6 +709,7 @@ func set_quality(level: int) -> void:
 	for mat in surface_materials.values(): mat.set_shader_parameter("quality",quality_level)
 	if lake_probe != null: lake_probe.visible = quality_level>=2
 	for batch in grass_batches:
+		batch.visibility_range_end=[20.,27.,36.,48.][quality_level]
 		batch.multimesh.visible_instance_count = roundi(batch.multimesh.instance_count*float(density[quality_level]))
 		batch.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if quality_level==3 else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for mat in world_materials:
@@ -782,9 +845,12 @@ func setup_lake_probe() -> void:
 	add_child(lake_probe)
 
 func update_water_light(sky_color: Color, day: float, phase: float) -> void:
-	if lake_material != null:
-		lake_material.set_shader_parameter("sky_tint",sky_color)
-		lake_material.set_shader_parameter("daylight",day)
+	var elevation:=sin(phase*TAU)
+	shaft_material.set_shader_parameter("strength",smoothstep(0.0,0.24,elevation)*(1.0-smoothstep(0.33,0.70,elevation))*0.105)
+	for mat in [water_simple,water_clear]:
+		if mat:
+			mat.set_shader_parameter("sky_tint",sky_color)
+			mat.set_shader_parameter("daylight",day)
 	if lake_probe != null and quality_level>=2:
 		# Refresh captured surroundings a few times per day, not six renders per frame.
 		var period := floori(phase*8.0)

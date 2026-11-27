@@ -34,6 +34,31 @@ func _init(key: String, world_seed: int) -> void:
 		if trees.size()<34: trees.append(p)
 		elif blossoms.size()<22: blossoms.append(p)
 
+# Distance from water to its nearest bank, baked once for both water presets.
+func depth_texture() -> ImageTexture:
+	var img:=Image.create(AREA.size.x,AREA.size.y,false,Image.FORMAT_L8)
+	var distances: Dictionary={}
+	var queue: Array[Vector2i]=[]
+	var directions: Array[Vector2i]=[Vector2i.LEFT,Vector2i.UP,Vector2i.DOWN,Vector2i.RIGHT]
+	for p: Vector2i in water:
+		for offset in directions:
+			if not water.has(p+offset):
+				distances[p]=1
+				queue.append(p)
+				break
+	var cursor:=0
+	while cursor<queue.size():
+		var cell:=queue[cursor]
+		cursor+=1
+		var value:=minf(1.0,float(distances[cell])/5.0)
+		img.set_pixelv(cell-AREA.position,Color(value,value,value))
+		for offset in directions:
+			var neighbor:=cell+offset
+			if water.has(neighbor) and not distances.has(neighbor):
+				distances[neighbor]=distances[cell]+1
+				queue.append(neighbor)
+	return ImageTexture.create_from_image(img)
+
 func thumbnail() -> Texture2D:
 	var img := Image.create(61,47,false,Image.FORMAT_RGB8)
 	img.fill(Color(MAPS[id][2]))

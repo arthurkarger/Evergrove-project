@@ -93,6 +93,8 @@ func spawn_resource(id: String, p: Vector2) -> void:
 	add_child(node)
 	node.position = Vector3(p.x,0.09,p.y)
 	resources.append({"id":id,"node":node})
+	var model_id: String={"stone":"river_stones","flower":"wildflowers"}.get(id,"")
+	if model_id!="" and preload("res://blender_models.gd").mount(node,model_id): return
 	match id:
 		"wood":
 			part(node,"round",Vector3(0,0.23,0),Vector3(1.15,0.55,0.55),"835a40")

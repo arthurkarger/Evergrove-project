@@ -40,3 +40,12 @@ static func character_mesh(label: String) -> Mesh:
 	if data.is_empty():
 		return null
 	return data[0][0] as Mesh
+
+static func mount(parent: Node3D, id: String, size := Vector3.ONE) -> bool:
+	var components:=parts(id)
+	for entry in components:
+		var model:=MeshInstance3D.new()
+		model.mesh=entry[0]
+		model.transform=Transform3D(Basis.from_scale(size),Vector3.ZERO)*entry[1]
+		parent.add_child(model)
+	return not components.is_empty()

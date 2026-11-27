@@ -422,7 +422,9 @@ func update_solar_lighting(phase: float) -> void:
 	village.update_contact_light(daylight)
 	sky.fog_enabled = quality_level>=2 and life.room<0
 	sky.fog_light_color = sky.background_color
-	sky.fog_density = 0.0018 if quality_level==3 else 0.0009
+	sky.fog_density = (0.0018 if quality_level==3 else 0.0009)*(1.0+twilight*2.5)
+	sky.fog_sun_scatter = 0.22+0.38*twilight
+	sky.fog_light_energy = lerpf(0.38,0.9,daylight)
 	if life.room>=0:
 		sun.rotation_degrees = Vector3(-55,-35,0)
 		sun.light_color = Color("ffe9cb")
@@ -497,6 +499,8 @@ func apply_graphics(level: int) -> void:
 	sun.directional_shadow_max_distance = [12.0,18.0,28.0,42.0][quality_level]
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if quality_level==3 else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 	sun.directional_shadow_blend_splits = quality_level>=2
+	sun.shadow_blur = [1.0,0.9,1.15,1.45][quality_level]
+	sky.ambient_light_sky_contribution = [0.0,0.0,0.2,0.35][quality_level]
 	if DisplayServer.get_name() != "headless":
 		RenderingServer.directional_shadow_atlas_set_size([512,1024,2048,4096][quality_level],quality_level<3)
 		RenderingServer.directional_soft_shadow_filter_set_quality(RenderingServer.SHADOW_QUALITY_SOFT_HIGH if quality_level==3 else (RenderingServer.SHADOW_QUALITY_SOFT_LOW if quality_level==2 else RenderingServer.SHADOW_QUALITY_HARD))
