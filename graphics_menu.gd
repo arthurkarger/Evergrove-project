@@ -60,8 +60,8 @@ func build(game) -> void:
 	layer = 10
 	load_quality()
 	add_child(menu_button)
-	menu_button.text = "☰"
-	menu_button.add_theme_font_size_override("font_size",24)
+	preload("res://ui_style.gd").center_icon(menu_button,preload("res://assets/art/icons/menu.svg"),28)
+	menu_button.focus_mode=Control.FOCUS_NONE
 	menu_button.add_theme_stylebox_override("normal",style("35473ce8","83917b"))
 	menu_button.add_theme_stylebox_override("pressed",style("526449","e7d3a2"))
 	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)

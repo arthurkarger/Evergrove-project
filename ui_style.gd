@@ -35,3 +35,45 @@ static func button(b: Button) -> void:
 		b.add_theme_color_override(key,INK)
 	b.add_theme_color_override("font_disabled_color",Color("a2a493"))
 	b.add_theme_font_size_override("font_size",17)
+
+# Center the actual visible artwork, not its potentially asymmetric SVG canvas.
+static var centered_cache: Dictionary = {}
+
+static func centered_texture(source: Texture2D) -> Texture2D:
+	if source == null: return null
+	var key := source.get_instance_id()
+	if centered_cache.has(key): return centered_cache[key]
+	var image := source.get_image()
+	if image == null or image.is_empty(): return source
+	if image.is_compressed() and image.decompress()!=OK: return source
+	image.convert(Image.FORMAT_RGBA8)
+	var bounds := image.get_used_rect()
+	if bounds.size.x<=0 or bounds.size.y<=0: return source
+	var art := image.get_region(bounds)
+	var factor := 56.0/float(maxi(bounds.size.x,bounds.size.y))
+	var target := Vector2i(maxi(1,roundi(bounds.size.x*factor)),maxi(1,roundi(bounds.size.y*factor)))
+	art.resize(target.x,target.y,Image.INTERPOLATE_LANCZOS)
+	var canvas := Image.create(64,64,false,Image.FORMAT_RGBA8)
+	canvas.fill(Color.TRANSPARENT)
+	canvas.blit_rect(art,Rect2i(Vector2i.ZERO,target),Vector2i((64-target.x)/2,(64-target.y)/2))
+	var texture := ImageTexture.create_from_image(canvas)
+	centered_cache[key]=texture
+	return texture
+
+static func center_icon(b: Button, texture: Texture2D, extent: float) -> TextureRect:
+	# Independent child: button captions and theme margins cannot move this icon.
+	var art := TextureRect.new()
+	art.name="CenteredIcon"
+	art.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	art.expand_mode=TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode=TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	art.texture_filter=CanvasItem.TEXTURE_FILTER_LINEAR
+	art.texture=centered_texture(texture)
+	b.icon=null
+	b.add_child(art)
+	art.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	art.offset_left=-extent*0.5
+	art.offset_right=extent*0.5
+	art.offset_top=-extent*0.5
+	art.offset_bottom=extent*0.5
+	return art

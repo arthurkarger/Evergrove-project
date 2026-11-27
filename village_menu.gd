@@ -237,7 +237,8 @@ func redraw_menu() -> void:
 	var prices: Dictionary=social.BUY if buying else social.SELL
 	for id in prices:
 		var b := button(options,"%s    %d folhas   ·   %d na mochila" % [bag.NAMES[id],prices[id],bag.quantity(id)],trade.bind(id))
-		b.icon=world.hud.icon_for(id)
+		b.icon=preload("res://ui_style.gd").centered_texture(world.hud.icon_for(id))
+		b.vertical_icon_alignment=VERTICAL_ALIGNMENT_CENTER
 		b.expand_icon=true
 		b.add_theme_constant_override("icon_max_width",31)
 		b.disabled=social.coins<int(prices[id]) or (id in bag.TOOLS and bag.quantity(id)>0) if buying else bag.quantity(id)==0

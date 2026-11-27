@@ -22,7 +22,22 @@ func run() -> void:
 		if external != null:
 			check(icon==external,"Imported icon preferred "+id)
 	w.hud.toggle()
+	await process_frame
 	check(w.hud.shade.visible and w.hud.cells.size()==24,"Inventory opens")
+	for buttons in [w.hud.quick,w.hud.cells]:
+		for b in buttons:
+			var art_node := b.get_node("CenteredIcon") as TextureRect
+			check(art_node.position.distance_to((b.size-art_node.size)*0.5)<1.1,"Icon centered independently of count")
+			check(b.icon==null and b.text=="","No native icon/text offset")
+			check(art_node.mouse_filter==Control.MOUSE_FILTER_IGNORE,"Icon does not intercept input")
+	for b in [w.hud.build_button,w.hud.run_button,w.graphics.menu_button]:
+		var art_node := b.get_node("CenteredIcon") as TextureRect
+		check(art_node.position.distance_to((b.size-art_node.size)*0.5)<1.1,"HUD control icon centered")
+	var count_node := w.hud.cells[4].get_node("ItemCount") as Label
+	check(count_node.text=="8","Stack count separate from icon")
+	var normalized := preload("res://ui_style.gd").centered_texture(w.hud.icon_for("axe"))
+	var art_bounds := normalized.get_image().get_used_rect()
+	check((Vector2(art_bounds.position)+Vector2(art_bounds.size)*0.5).distance_to(Vector2(32,32))<1.1,"Visible artwork centered")
 	w.hud.toggle()
 	w.toggle_bag(true)
 	w.hud.hide()

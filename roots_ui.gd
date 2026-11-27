@@ -73,11 +73,31 @@ func bar_button(parent: Container,i: int,inventory: bool) -> Button:
 	var b := Button.new()
 	decorate(b)
 	b.custom_minimum_size = Vector2(51,48)
-	b.expand_icon = true
-	b.add_theme_constant_override("icon_max_width",42 if inventory else 36)
-	b.add_theme_font_size_override("font_size",13)
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	parent.add_child(b)
+	Style.center_icon(b,null,48.0 if inventory else 38.0)
+	var count := Label.new()
+	count.name="ItemCount"
+	count.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	count.horizontal_alignment=HORIZONTAL_ALIGNMENT_RIGHT
+	count.vertical_alignment=VERTICAL_ALIGNMENT_BOTTOM
+	count.add_theme_font_size_override("font_size",13)
+	count.add_theme_color_override("font_color",Style.INK)
+	count.add_theme_color_override("font_outline_color",Color("fff5df"))
+	count.add_theme_constant_override("outline_size",4)
+	b.add_child(count)
+	count.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	count.offset_right=-4
+	count.offset_bottom=-2
+	var empty := Label.new()
+	empty.name="EmptyNumber"
+	empty.mouse_filter=Control.MOUSE_FILTER_IGNORE
+	empty.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	empty.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
+	empty.add_theme_color_override("font_color",Style.MUTED)
+	empty.add_theme_font_size_override("font_size",13)
+	b.add_child(empty)
+	empty.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if inventory: b.pressed.connect(cell_pressed.bind(i))
 	else: b.pressed.connect(picked.emit.bind(i))
 	return b
@@ -95,14 +115,12 @@ func build(model) -> void:
 	top.add_child(pack)
 	pack.pressed.connect(toggle)
 	build_button.name="BuildButton"
-	build_button.icon=preload("res://assets/art/icons/build.svg")
 	build_button.tooltip_text="Construir · B"
-	build_button.expand_icon=true
-	build_button.add_theme_constant_override("icon_max_width",32)
 	build_button.custom_minimum_size=Vector2(48,42)
 	decorate(build_button)
 	build_button.focus_mode=Control.FOCUS_NONE
 	top.add_child(build_button)
+	Style.center_icon(build_button,preload("res://assets/art/icons/build.svg"),34)
 	build_button.pressed.connect(home_requested.emit)
 	var info := PanelContainer.new()
 	info.add_theme_stylebox_override("panel",Style.box(Color("fff2ded9"),Color.TRANSPARENT,14,7,0))
@@ -130,12 +148,10 @@ func build(model) -> void:
 	add_child(run_button)
 	run_button.name="RunButton"
 	decorate(run_button)
-	run_button.icon=preload("res://assets/art/icons/run.svg")
+	Style.center_icon(run_button,preload("res://assets/art/icons/run.svg"),38)
 	run_button.tooltip_text="Correr · toque para alternar"
 	run_button.toggle_mode=true
 	run_button.focus_mode=Control.FOCUS_NONE
-	run_button.expand_icon=true
-	run_button.add_theme_constant_override("icon_max_width",33)
 	run_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	run_button.offset_left=-70
 	run_button.offset_right=-12
@@ -208,9 +224,12 @@ func refresh() -> void:
 		for i in list.size():
 			var b: Button = list[i]
 			var item = bag.slots[i]
-			b.icon = null if item == null else icon_for(item.id)
-			b.text = str(int(item.n)) if item != null and item.n > 1 else ""
-			if item == null and i < Bag.QUICK: b.text = str(i+1)
+			var art := b.get_node("CenteredIcon") as TextureRect
+			var count := b.get_node("ItemCount") as Label
+			var empty := b.get_node("EmptyNumber") as Label
+			art.texture = null if item == null else Style.centered_texture(icon_for(item.id))
+			count.text = str(int(item.n)) if item != null and item.n > 1 else ""
+			empty.text = str(i+1) if item == null and i < Bag.QUICK else ""
 			b.tooltip_text = "Vazio" if item == null else Bag.NAMES[item.id]
 			var chosen: bool = i == source if shade.visible else i == bag.selected
 			b.self_modulate = Color.WHITE
