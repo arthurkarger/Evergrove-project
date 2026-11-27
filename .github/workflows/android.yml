@@ -137,30 +137,12 @@ jobs:
           python3 - "$RUNNER_TEMP/evergrove-manifest.txt" <<'PY'
           import pathlib, re, sys
           manifest = pathlib.Path(sys.argv[1]).read_text()
-          preset = pathlib.Path("export_presets.cfg").read_text()
-          expected_code = int(re.search(r'^version/code=(\d+)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Evergrove-Android
-          path: build/evergrove.apk
-          if-no-files-found: error
-, preset, re.M).group(1))
-          expected_name = re.search(r'^version/name="([^"]+)"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Evergrove-Android
-          path: build/evergrove.apk
-          if-no-files-found: error
-, preset, re.M).group(1)
+          preset = dict(line.split("=", 1) for line in pathlib.Path("export_presets.cfg").read_text().splitlines() if "=" in line)
+          expected_code = int(preset["version/code"])
+          expected_name = preset["version/name"].strip('"')
 
           def attribute(name):
-              match = re.search(r'^\s*A:\s+' + re.escape(name) + r'(?:\([^)]*\))?=(.*)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Evergrove-Android
-          path: build/evergrove.apk
-          if-no-files-found: error
-, manifest, re.M)
+              match = re.search(r'^\s*A:\s+' + re.escape(name) + r'(?:\([^)]*\))?=(.*)$', manifest, re.M)
               return match.group(1).strip() if match else None
 
           def string_value(name):
@@ -186,7 +168,7 @@ jobs:
           if attribute("android:debuggable") is not None and integer_value("android:debuggable") != 0:
               sys.exit("Refusing to publish a debuggable APK")
           print(f"Verified release manifest: com.evergrove.game {expected_name} ({expected_code})")
-          for name in re.findall(r'android\.permission\.[A-Z_0-9]+', manifest):
+          for name in sorted(set(re.findall(r'android\.permission\.[A-Z_0-9]+', manifest))):
               print("Permission reference:", name)
           PY
       - uses: actions/upload-artifact@v4
