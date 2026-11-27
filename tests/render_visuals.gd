@@ -11,6 +11,7 @@ func check(ok: bool, detail: String) -> void:
 		failures+=1
 
 func run() -> void:
+	print("Visual test: creating world")
 	set_meta("evergrove_map","vale")
 	var w=preload("res://main.tscn").instantiate()
 	root.add_child(w)
@@ -34,6 +35,7 @@ func run() -> void:
 	var out:=OS.get_environment("EVERGROVE_PREVIEWS")
 	if not out.is_empty(): DirAccess.make_dir_recursive_absolute(out)
 	for level in 4:
+		print("Visual test: starting preset ",level)
 		w.life.weather.kind=["sun","rain","wind","storm"][level]
 		w.life.weather.levels=w.life.weather.LEVELS[w.life.weather.kind]
 		w.apply_graphics(level)
@@ -42,7 +44,9 @@ func run() -> void:
 		w.camera.position=target+Vector3(0,10,10)
 		w.update_solar_lighting([0.23,0.14,0.08,0.43][level])
 		await create_timer(0.6).timeout
+		print("Visual test: waiting for rendered frame ",level)
 		await RenderingServer.frame_post_draw
+		print("Visual test: reading frame ",level)
 		var frame:=root.get_texture().get_image()
 		check(frame!=null and not frame.is_empty(),"Rendered image at preset %d" % level)
 		if frame==null or frame.is_empty(): continue

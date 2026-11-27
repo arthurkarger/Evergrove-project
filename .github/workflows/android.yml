@@ -11,6 +11,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -112,21 +113,6 @@ jobs:
           godot --headless --path . --script res://tests/graphics.gd 2>&1 | tee "$RUNNER_TEMP/evergrove-graphics.log"
           grep -Fx 'Graphics integration failures: 0' "$RUNNER_TEMP/evergrove-graphics.log"
           if grep -E '^(SCRIPT ERROR|ERROR):' "$RUNNER_TEMP/evergrove-graphics.log"; then exit 1; fi
-      - name: Render all presets using the Mobile renderer
-        shell: bash
-        env:
-          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-render-profile
-          EVERGROVE_PREVIEWS: ${{ runner.temp }}/evergrove-previews
-        run: |
-          set -euo pipefail
-          sudo apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers
-          xvfb-run -a godot --rendering-method mobile --rendering-driver vulkan --audio-driver Dummy --resolution 960x540 --path . --script res://tests/render_visuals.gd 2>&1 | tee "$RUNNER_TEMP/render.log"
-          grep -Fx 'Rendered preset failures: 0' "$RUNNER_TEMP/render.log"
-          if grep -E '^(SCRIPT ERROR|SHADER ERROR|ERROR):' "$RUNNER_TEMP/render.log"; then exit 1; fi
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Evergrove-Visual-Previews
-          path: ${{ runner.temp }}/evergrove-previews/*.png
       - name: Export and verify signed release APK
         shell: bash
         env:
@@ -194,3 +180,55 @@ jobs:
           name: Evergrove-Android
           path: build/evergrove.apk
           if-no-files-found: error
+
+  visual-tests:
+    name: Visual tests (independent of APK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot for visual tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/godotengine/godot/releases/download/4.4.1-stable
+          curl --fail --location --retry 3 "$BASE/Godot_v4.4.1-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot-bin
+          sudo install -m 755 /tmp/godot-bin/Godot_v4.4.1-stable_linux.x86_64 /usr/local/bin/godot
+          godot --version
+      - name: Generate Blender game models
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends blender python3-numpy
+          blender --background --factory-startup --python-exit-code 1 --python tools/generate_blender_assets.py -- --game-assets
+          for model in house_628693 house_946e57 house_96778c house_577453 house_b76349 house_597e80 house_84905d tree pine fruit_tree bench character_head character_torso character_limb character_shoe character_hair; do
+            test -s "assets/models/generated/$model.glb"
+          done
+      - name: Import project
+        shell: bash
+        run: |
+          godot --headless --editor --path . --import
+          python3 tools/compress_model_textures.py
+          godot --headless --editor --path . --import
+      - name: Render all presets using the Mobile renderer
+        timeout-minutes: 5
+        shell: bash
+        env:
+          XDG_DATA_HOME: ${{ runner.temp }}/evergrove-render-profile
+          EVERGROVE_PREVIEWS: ${{ runner.temp }}/evergrove-previews
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends xvfb xauth mesa-vulkan-drivers
+          timeout --signal=TERM --kill-after=10s 240s xvfb-run -a godot --rendering-method mobile --rendering-driver vulkan --audio-driver Dummy --resolution 960x540 --path . --script res://tests/render_visuals.gd 2>&1 | tee "$RUNNER_TEMP/render.log"
+          grep -Fx 'Rendered preset failures: 0' "$RUNNER_TEMP/render.log"
+          if grep -E '^(SCRIPT ERROR|SHADER ERROR|ERROR):' "$RUNNER_TEMP/render.log"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: Evergrove-Visual-Previews
+          path: |
+            ${{ runner.temp }}/evergrove-previews/*.png
+            ${{ runner.temp }}/render.log
+          if-no-files-found: warn
