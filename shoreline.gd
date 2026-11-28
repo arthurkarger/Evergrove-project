@@ -8,6 +8,7 @@ const COVES := [
 	[Vector3(31,-25,12),Vector3(-39,9,6)],
 	[Vector3(-28,30,11),Vector3(36,8,8)],
 	[Vector3(-36,18,12),Vector3(22,-30,10)]]
+var relief: RefCounted
 var classic_coast:=false
 var variant: int
 var phase: float
@@ -49,6 +50,10 @@ func smooth_union(a: float,b: float,k: float) -> float:
 	return minf(a,b)-h*h*k*.25
 
 func inland(p: Vector2) -> float:
+	var base:=original_inland(p)
+	return smooth_union(base,relief.water_distance(p),.8) if relief else base
+
+func original_inland(p: Vector2) -> float:
 	var q:=(p-lake)/radii
 	var a:=q.angle()
 	var edge:=0.84+0.055*cos(3*a+phase)+0.045*sin(2*a-phase)
@@ -71,8 +76,8 @@ func distance_at(p: Vector2) -> float:
 	return minf(coast(p),inland(p))
 
 # Terrain providers expose surface height independently of the X/Z tile grid.
-func height_at(_p: Vector2) -> float:
-	return 0.0
+func height_at(p: Vector2) -> float:
+	return relief.height(p) if relief else 0.0
 
 func beach_width(p: Vector2) -> float:
 	if variant<0 or legacy_channel: return 3.25

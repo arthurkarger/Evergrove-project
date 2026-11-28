@@ -23,7 +23,8 @@ var foliage_batches: Array[MultiMeshInstance3D] = []
 var foliage_material: ShaderMaterial
 var surface_materials: Dictionary = {}
 var lake_probe: ReflectionProbe
-var water_surfaces: Array[MultiMeshInstance3D] = []
+var cascade_spray: Array[GPUParticles3D]=[]
+var water_surfaces: Array[GeometryInstance3D] = []
 var water_simple: ShaderMaterial
 var water_clear: ShaderMaterial
 var bloom_material:=ShaderMaterial.new()
@@ -84,7 +85,7 @@ func _ready() -> void:
 		beautify_starter()
 		plant_grass()
 		build_lamps()
-	wall(Vector3(0,-0.3,0),Vector3(94,0.6,78))
+	if not landscape: wall(Vector3(0,-0.3,0),Vector3(94,0.6,78))
 	world_grid.terrain_provider=shoreline.terrain_at
 	world_grid.height_provider=shoreline.height_at
 	shoreline.add_boundary(self)
@@ -101,6 +102,7 @@ func _ready() -> void:
 
 # Share primitive geometry and draw repeated scenery in spatial batches.
 func piece(kind: String, position_3d: Vector3, size: Vector3, tint: String, angle := 0.0) -> void:
+	if landscape and kind!="water": position_3d.y+=shoreline.height_at(Vector2(position_3d.x,position_3d.z))
 	var key := "%s:%d:%d" % [kind, floori(position_3d.x / 16), floori(position_3d.z / 16)]
 	if not batches.has(key):
 		batches[key] = []
@@ -109,6 +111,7 @@ func piece(kind: String, position_3d: Vector3, size: Vector3, tint: String, angl
 
 # Keep imported scenery spatially batched just like the procedural geometry.
 func imported_model(name: String, pos: Vector3, size: Vector3) -> bool:
+	if landscape: pos.y+=shoreline.height_at(Vector2(pos.x,pos.z))
 	var parts := BlenderModels.parts(name)
 	if parts.is_empty():
 		return false
@@ -177,7 +180,9 @@ uniform sampler2D shore_map : repeat_disable, filter_linear;
 uniform vec4 sky_tint : source_color = vec4(0.55,0.72,0.82,1.0);
 uniform float daylight = 1.0;
 varying vec3 world_pos;
+varying float slope_up;
 void vertex() {
+	slope_up=NORMAL.y;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
@@ -243,6 +248,14 @@ void fragment() {
 	ALBEDO *= opacity;
 	EMISSION = riverbed*(1.-opacity);
 #endif
+	float plunging=1.-smoothstep(.52,.92,slope_up);
+	float strands=p.y*16.+1.8*sin(p.x*2.1+p.y*2.5)+.65*sin(p.y*4.7+world_pos.y*1.1);
+	float drift=world_pos.y*4.4+TIME*5.8;
+	float film_grain=.5+.5*sin(strands+.62*sin(drift+p.y*3.))*sin(strands*.47-drift*.31);
+	float froth=smoothstep(.52,.98,film_grain)*(.32+.19*sin(drift+p.x*2.8));
+	vec3 cascade=mix(vec3(.14,.39,.40),vec3(.52,.70,.66),.20+.80*froth);
+	ALBEDO=mix(ALBEDO,cascade,plunging);
+	EMISSION*=1.-plunging;
 	SPECULAR = quality>=2 ? 0.48 : 0.0;
 }
 """
@@ -258,10 +271,12 @@ uniform sampler2D art_grass : source_color, repeat_enable, filter_linear_mipmap;
 uniform bool has_art_grass = false;
 uniform vec3 meadow_color=vec3(.26,.44,.19);
 varying vec3 world_pos;
+varying float slope_up;
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 void vertex() {
+	slope_up=NORMAL.y;
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 void fragment() {
@@ -306,6 +321,15 @@ void fragment() {
 		float shade_cloud=.5+.5*sin(p.x*.16+TIME*.14+sin(p.y*.22))*cos(p.y*.11+TIME*.11);
 		ALBEDO*=1.-cloud_cover*shade_cloud*.15;
 	}
+	float face=1.-smoothstep(.58,.91,slope_up);
+	float contour=p.x*.75+p.y*.41;
+	float seam=world_pos.y*1.1+.22*sin(contour)+.12*sin(p.y*1.9)+.08*mottling;
+	float strata=smoothstep(.06,.37,fract(seam));
+	float boulder=smoothstep(.15,.68,sin(contour*1.4+world_pos.y*.7)*cos(world_pos.y*1.9+p.y*.82));
+	vec3 cliff=mix(vec3(.43,.28,.17),vec3(.38,.36,.30),boulder)*(.85+.14*strata+.075*detail);
+	float cap=smoothstep(.54,.87,slope_up)*smoothstep(2.75,3.55,mod(world_pos.y+.1,3.6));
+	cliff=mix(cliff,grass_base*.73,cap);
+	ALBEDO=mix(ALBEDO,cliff,face);
 	ROUGHNESS=mix(.98,.21,pool);
 	SPECULAR=.08+.40*pool;
 }
@@ -353,6 +377,7 @@ func flush_batches() -> void:
 	for mat in [grass_material,water_simple,water_clear]:
 		mat.set_shader_parameter("shore_map",banks)
 	lake_material=water_clear
+	if landscape: shoreline.relief.build(self,grass_material)
 	foliage_material = make_foliage_material()
 	surface_materials = {"bark":make_surface_material(0),"stone":make_surface_material(1),"path_box":make_surface_material(2),"path_disc":make_surface_material(2),"roof_tiles":make_surface_material(3),"wood":make_surface_material(4)}
 	world_materials = [grass_material,water_simple,water_clear,tuft_material]
@@ -412,7 +437,7 @@ func wall(pos: Vector3, size: Vector3, angle := 0.0) -> void:
 	var box := BoxShape3D.new()
 	box.size = size
 	collider.shape = box
-	collider.position = pos
+	collider.position = pos+Vector3.UP*shoreline.height_at(Vector2(pos.x,pos.z))
 	collider.rotation.y = angle
 	terrain.add_child(collider)
 	if pos.y+size.y*0.5>0.1:
@@ -550,7 +575,7 @@ func tree(x: float,z: float,s: float,kind: int) -> void:
 		var key: String="sunshaft:%d:%d" % [floori(x/16),floori(z/16)]
 		if not batches.has(key): batches[key]=[]
 		var beam:=Basis(Vector3.BACK,-0.48)*Basis.from_scale(Vector3(0.85,3.6,1.0)*s)
-		batches[key].append([Transform3D(beam,base+Vector3(-0.5,1.6,0)*s),Color.WHITE])
+		batches[key].append([Transform3D(beam,base+Vector3.UP*shoreline.height_at(Vector2(x,z))+Vector3(-0.5,1.6,0)*s),Color.WHITE])
 	world_grid.reserve_box(Vector2(x,z),Vector2(1.6,1.6)*s,"Árvore")
 	contact_at(Vector2(x,z),Vector2(2.6,2.4)*s,0.058)
 	wall(base+Vector3.UP*s,Vector3(0.65,2,0.65)*s)
@@ -757,6 +782,7 @@ func build_lamps() -> void:
 
 func set_quality(level: int) -> void:
 	quality_level = clampi(level,0,3)
+	for spray in cascade_spray: spray.amount=[6,12,20,32][quality_level]
 	lake_material=water_clear if quality_level>=2 else water_simple
 	for water in water_surfaces: water.material_override=lake_material
 	for shaft in shafts: shaft.visible=quality_level==3

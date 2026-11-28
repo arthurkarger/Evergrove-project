@@ -86,11 +86,14 @@ func _ready():
 	add_child(life)
 	if preload("res://natural_maps.gd").MAPS.has(life.map_id):
 		village.landscape=preload("res://natural_maps.gd").new(life.map_id,life.map_seed)
+		village.landscape.terrain_options=life.terrain_options
 		village.landscape.protect_existing_layout(life.plots,life.house.objects,life.house)
 		town.frontier=true
 	add_child(village)
 	add_child(atmosphere)
 	player = CharacterBody3D.new()
+	player.floor_snap_length=.28
+	player.floor_constant_speed=true
 	add_child(player)
 	player.position = life.saved_position
 	if village.landscape and life.room==-1:
@@ -109,6 +112,7 @@ func _ready():
 						best=d
 						nearest=p
 			player.position=Vector3(nearest.x,.51,nearest.y)
+	if village.landscape: player.position.y=.51+village.shoreline.height_at(Vector2(player.position.x,player.position.z))
 	var c := CollisionShape3D.new()
 	var shape := CapsuleShape3D.new()
 	shape.radius = 0.28
@@ -177,6 +181,7 @@ func configure_world_grid() -> void:
 	var grid=village.world_grid
 	# Resources, entrances and NPC travel graph share the same occupancy contract.
 	grid.cultivated=life.cell_index
+	if village.landscape: village.landscape.mark_accessible(grid)
 	for resource in life.resources:
 		var p: Vector3=resource.node.position
 		if village.landscape:
@@ -186,7 +191,7 @@ func configure_world_grid() -> void:
 				resource["unplaced"]=true
 				resource.node.hide()
 				continue
-			resource.node.position=Vector3(cell.x,p.y,cell.y)
+			resource.node.position=Vector3(cell.x,p.y+grid.height_at(Vector2(cell)),cell.y)
 			p=resource.node.position
 		grid.reserve_box(Vector2(p.x,p.z),Vector2(0.9,0.9),"Recurso")
 	for i in 7:
@@ -199,6 +204,8 @@ func configure_world_grid() -> void:
 			if neighbor>id:
 				grid.reserve_line(town.graph.get_point_position(id),town.graph.get_point_position(neighbor),1.2,"Rota de moradores")
 	life.house.world_grid=grid
+	for bed in life.beds:
+		bed.position.y=grid.height_at(Vector2(bed.position.x,bed.position.z))+.055
 
 # Prefer the original row, then inspect other rows. Even a fully developed
 # island has a bounded search and keeps the resource's persistent index.
@@ -208,7 +215,8 @@ func forage_cell(grid,origin: Vector2i) -> Vector2i:
 		var z:=wrapi(origin.y+row,bounds.position.y,bounds.end.y)
 		for col in bounds.size.x:
 			var cell:=Vector2i(wrapi(origin.x+col,bounds.position.x,bounds.end.x),z)
-			if grid.reserved.has(cell) or grid.cultivated.has(cell): continue
+			if grid.reserved.has(cell) or grid.cultivated.has(cell) or not village.landscape.accessible.has(cell): continue
+			if village.landscape.lookout.has_point(cell) or village.landscape.DISTRICTS[village.landscape.id][2].has_point(cell): continue
 			if grid.terrain_at(cell)!="grass" or village.landscape.original_water_cells.has(cell): continue
 			if life.house.at(-1,cell)<0: return cell
 	return bounds.end
@@ -288,7 +296,8 @@ func interact_focus() -> void:
 			else:
 				var offset:=Vector2(0,0.4)
 				if life.lot_exit.size()==4: offset=offset.rotated(-float(life.lot_exit[3])*PI/2)
-				player.position = town.outdoor(door(life.room)+offset)+Vector3.UP*0.52
+				var exit_point:=door(life.room)+offset
+				player.position = town.outdoor(exit_point)+Vector3.UP*(.52+life.house.world_grid.height_at(exit_point))
 				life.room = -1
 				life.lot_exit=[]
 			player.velocity = Vector3.ZERO
@@ -414,7 +423,9 @@ func update_world_ui() -> void:
 		for j in life.house.objects.size():
 			var obj: Dictionary=life.house.objects[j]
 			if not obj.get("complete",false): continue
-			var d:=Vector2(player.position.x,player.position.z).distance_to(site.entrance(obj))
+			var entry: Vector2=site.entrance(obj)
+			if absf(player.position.y-.51-village.world_grid.height_at(entry))>1.: continue
+			var d:=Vector2(player.position.x,player.position.z).distance_to(entry)
 			if d<best:
 				best=d
 				focus_kind="door"
@@ -437,7 +448,9 @@ func update_world_ui() -> void:
 		for i in life.house.objects.size():
 			var obj: Dictionary=life.house.objects[i]
 			if obj.room!=life.room or obj.id not in ["chest","workbench"]: continue
-			var d:=local.distance_to(Vector2(obj.x,obj.z))
+			var location:=Vector2(obj.x,obj.z)
+			if life.room==-1 and absf(player.position.y-.51-village.world_grid.height_at(location))>1.: continue
+			var d:=local.distance_to(location)
 			if d<best:
 				best=d
 				focus_index=i
@@ -648,8 +661,7 @@ func _physics_process(delta):
 	if Input.is_physical_key_pressed(KEY_S): d.y += 1
 	d = (d+touch).limit_length()
 	var speed := movement_speed()
-	player.velocity = Vector3(d.x*speed,-2,d.y*speed)
-	player.move_and_slide()
+	walk(d,speed,delta)
 	if life.room<0:
 		player.position.x = clampf(player.position.x,village.world_grid.bounds.position.x,village.world_grid.bounds.end.x-1)
 		player.position.z = clampf(player.position.z,village.world_grid.bounds.position.y,village.world_grid.bounds.end.y-1)
@@ -660,3 +672,9 @@ func _physics_process(delta):
 	elapsed += delta
 	character.pose(d,delta,speed>4.0)
 	if site.blend==0: camera.position = camera.position.lerp(player.position+Vector3(0,10,10),1-exp(-delta*8))
+
+
+func walk(direction: Vector2,speed: float,delta: float) -> void:
+	var vy: float=-.25 if player.is_on_floor() else maxf(-18.,player.velocity.y-18.*delta)
+	player.velocity=Vector3(direction.x*speed,vy,direction.y*speed)
+	player.move_and_slide()

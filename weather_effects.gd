@@ -179,7 +179,7 @@ func mix_loop(id: String,gain: float) -> void:
 
 func apply(weather,center: Vector3,daylight: float) -> void:
 	if not outside: return
-	position=Vector3(center.x,0,center.z)
+	position=Vector3(center.x,center.y-.51,center.z)
 	var l: Vector3=weather.levels
 	emit_fraction(drops,l.x)
 	emit_fraction(splashes,l.x)
@@ -220,7 +220,7 @@ func step(delta: float,weather,shore,center: Vector3) -> void:
 			var p:=Vector2(center.x,center.z)+Vector2(rng.randf_range(-7,7),rng.randf_range(-6,6))
 			if shore.distance_at(p)>-.7: continue
 			fish_clock=0
-			fish.position=Vector3(p.x,.075,p.y)
+			fish.position=Vector3(p.x,shore.height_at(p)+.075,p.y)
 			fish.rotation.y=rng.randf_range(-PI,PI)
 			fish.scale=Vector3.ONE*.02
 			fish.show()

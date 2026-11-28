@@ -32,6 +32,7 @@ var saved_position := Vector3(0,0.5,6)
 var house := preload("res://home_state.gd").new()
 var social := preload("res://social.gd").new()
 var settlement := preload("res://settlement.gd").new()
+var terrain_options: Dictionary={}
 var map_id := "starter_village"
 var map_seed := 0
 var room := -1
@@ -134,7 +135,7 @@ func attach_bed(i: int) -> void:
 	var tile:=Vector2i(int(p.x),int(p.z))
 	var bed:=Node3D.new()
 	add_child(bed)
-	bed.position=Vector3(tile.x,0.055,tile.y)
+	bed.position=Vector3(tile.x,house.world_grid.height_at(Vector2(tile))+.055,tile.y)
 	beds.append(bed)
 	cell_index[tile]=i
 	draw_bed(i)
@@ -231,7 +232,7 @@ func find_target(pos: Vector3) -> void:
 	aimed=Vector2i(roundi(pos.x),roundi(pos.z))
 	for i in range(beds.size(),beds.size()+resources.size()):
 		var node: Node3D = beds[i] if i < beds.size() else resources[i-beds.size()].node
-		if not node.visible: continue
+		if not node.visible or absf(node.position.y-pos.y)>1.45: continue
 		var d := Vector2(pos.x-node.position.x,pos.z-node.position.z).length_squared()
 		if d < distance:
 			target = i
@@ -242,7 +243,7 @@ func find_target(pos: Vector3) -> void:
 		best=beds[target].position
 	elif bag.tool()=="hoe" and room==-1 and house.world_grid.terrain_at(aimed)=="grass" and house.world_grid.reason(Rect2i(aimed,Vector2i.ONE))=="" and house.at(-1,aimed)<0:
 		target=beds.size()+resources.size()
-		best=Vector3(aimed.x,0.06,aimed.y)
+		best=Vector3(aimed.x,house.world_grid.height_at(Vector2(aimed))+.06,aimed.y)
 	marker.visible = target >= 0
 	marker.position = best+Vector3.UP*0.077
 
@@ -319,7 +320,7 @@ func save_progress(pos: Vector3) -> void:
 		save_failed=true
 		return
 	grow_plots(false)
-	var data := {"weather":weather.pack(),"version":4,"world_name":world_name,"profile":profile,"played":played,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
+	var data := {"weather":weather.pack(),"version":4,"world_name":world_name,"profile":profile,"played":played,"lot_exit":lot_exit,"settlement":{"stats":settlement.stats,"stages":settlement.stages},"world":{"id":house.world_grid.map_id,"seed":house.world_grid.seed_value,"terrain":terrain_options},"pos":[pos.x,pos.z],"slots":bag.slots,"quick":bag.selected,"day":day,"clock":clock,"plots":plots,"dormant":dormant,"house":house.pack(),"coins":social.coins,"friends":social.friends,"room":room,"local":[room_pos.x,room_pos.y]}
 	save_failed=not Saves.write_save(save_path,data)
 
 func load_progress() -> void:
@@ -349,6 +350,11 @@ func load_progress() -> void:
 	world_name=Saves.world_name(data)
 	played=maxf(0,float(data.get("played",0)))
 	map_id=data.get("world",{}).get("id","starter_village")
+	terrain_options=data.get("world",{}).get("terrain",{})
+	if Saves.Maps.MAPS.has(map_id) and terrain_options.is_empty() and not FileAccess.file_exists(save_path+".pre070"):
+		if not Saves.write_save(save_path+".pre070",Saves.read_save(save_path)):
+			save_failed=true
+			return
 	map_seed=int(data.get("world",{}).get("seed",0))
 	var settlement_data: Dictionary=data.get("settlement",{})
 	settlement.stats=settlement_data.get("stats",{})

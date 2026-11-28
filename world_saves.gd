@@ -52,7 +52,7 @@ static func write_save(path: String,data: Dictionary) -> bool:
 	return DirAccess.rename_absolute(path+".tmp",path)==OK
 
 static func erase(number: int) -> bool:
-	for suffix in [".bak.new",".tmp",".bak",".v1",".v2",""]:
+	for suffix in [".bak.new",".tmp",".bak",".v1",".v2",".pre070",".pre070.tmp",""]:
 		var path: String=slot(number)+suffix
 		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path)!=OK: return false
 	return true

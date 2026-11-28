@@ -10,7 +10,7 @@ const MAPS := {
 const DISTRICTS := {
 	"vale": [[Vector2(-23,-14),Vector2(-26,12),Vector2(6,-23)], ["e99bb2","ebbe73","f5dfcb"], Rect2i(3,8,9,8)],
 	"pinhal": [[Vector2(21,-18),Vector2(25,-6),Vector2(29,15)], ["adb6d0","e6d6bc","b5a4c6"], Rect2i(-9,8,9,8)],
-	"pomar": [[Vector2(-21,13),Vector2(-16,-16),Vector2(-28,-2)], ["efbc73","e49b78","f5d7aa"], Rect2i(4,7,10,8)],
+	"pomar": [[Vector2(-21,13),Vector2(-16,-16),Vector2(-28,-2)], ["efbc73","e49b78","f5d7aa"], Rect2i(8,15,10,9)],
 	"brejo": [[Vector2(18,-21),Vector2(28,8),Vector2(12,20)], ["c8adce","dedba1","b1caa1"], Rect2i(-11,7,9,8)]}
 var id: String
 var seed_value: int
@@ -19,6 +19,9 @@ var shoreline: RefCounted
 var original_water_cells := {}
 var trees := []
 var blossoms := []
+var lookout:=Rect2i()
+var accessible: Dictionary={}
+var terrain_options: Dictionary={}
 var protected: Array[Rect2i] = []
 var occupied_cells: Dictionary = {}
 var bridge: Rect2 = Rect2()
@@ -91,13 +94,26 @@ func thumbnail() -> Texture2D:
 
 func render(v) -> void:
 	v.world_grid=Grid.new(shoreline.AREA,id,seed_value)
-	v.piece("ground",Vector3(0,-0.32,0),Vector3(144,0.64,128),MAPS[id][2])
+	shoreline.relief=preload("res://relief.gd").new(shoreline.variant,shoreline.lake)
+	shoreline.relief.configure(terrain_options,protected,shoreline)
+	for z in range(-35,36):
+		for x in range(-43,44):
+			if not shoreline.relief.flat(Vector2(x,z)):
+				v.world_grid.reserve_rect(Rect2i(x,z,1,1),"Desnível do terreno")
 	v.cottage(-7,19.45,"628693","f3d1a0")
 	v.world_grid.reserve_box(Vector2(0,6),Vector2(2,2),"Chegada")
 	v.world_grid.reserve_box(Vector2(0,1),Vector2(8,4),"Acampamento dos visitantes")
 	if not shoreline.legacy_channel:
 		build_bridge(v)
 		build_trails(v)
+		for layer in 2:
+			var last: Vector2=shoreline.relief.ramp_point(layer,-6.)
+			for step in range(-5,8):
+				var next: Vector2=shoreline.relief.ramp_point(layer,step)
+				if shoreline.distance_at(next)>1.5 and not occupied_cells.has(Vector2i(next.round())): v.path_between(last,next,1.75)
+				last=next
+	choose_lookout(v,Vector2i(4,3))
+	if not lookout.has_area(): choose_lookout(v,Vector2i(3,2))
 	# Keep established vegetation coordinates for save compatibility, but
 	# avoid placing trunks and flowers in the new water or on narrow banks.
 	for p: Vector2i in trees:
@@ -108,12 +124,64 @@ func render(v) -> void:
 			v.flowers(p.x,p.y,DISTRICTS[id][1][posmod(p.x,3)])
 	if not shoreline.legacy_channel:
 		build_districts(v)
+	plant_upland_woods(v)
 	v.plant_grass()
+
+func plant_upland_woods(v) -> void:
+	var rng:=RandomNumberGenerator.new()
+	rng.seed=seed_value+811
+	var relief=shoreline.relief
+	var planted:=0
+	for i in 1700:
+		var p:=Vector2(rng.randf_range(-33,33),rng.randf_range(-26,23))
+		var h: float=relief.height(p)
+		if h<3.35 or shoreline.distance_at(p)<1.9: continue
+		var cell:=Vector2i(p.round())
+		var box:=Rect2i(cell-Vector2i.ONE,Vector2i(3,3))
+		if lookout.intersects(box) or DISTRICTS[id][2].intersects(box): continue
+		if protected.any(func(r): return r.intersects(box)): continue
+		var reserved: String=v.world_grid.reserved.get(cell,"")
+		if reserved not in ["","Desnível do terreno"]: continue
+		if absf(relief.height(p+Vector2.RIGHT*.65)-h)>.3 or absf(relief.height(p+Vector2.DOWN*.65)-h)>.3: continue
+		var clear:=true
+		for layer in 2:
+			var edge: Vector2=relief.boundary_depth(p,layer)
+			if edge.y>.06 and absf(edge.x)<7.: clear=false
+		for x in range(box.position.x,box.end.x):
+			for z in range(box.position.y,box.end.y):
+				var key:=Vector2i(x,z)
+				if v.world_grid.reserved.get(key,"") not in ["","Desnível do terreno"]: clear=false
+		if not clear: continue
+		v.tree(p.x,p.y,rng.randf_range(.72,1.08),MAPS[id][3] if planted%6 else 1)
+		# Sloping terrain may already occupy these grid keys, so record the
+		# trunk explicitly for subsequent trees and the ground-access search.
+		v.world_grid.reserved[cell]="Árvore"
+		planted+=1
+		if planted>=38: break
+
+func choose_lookout(v,size: Vector2i) -> void:
+	var best:=INF
+	var spring: Vector2=shoreline.relief.source
+	for dx in range(-13,14):
+		for dz in range(-12,13):
+			var origin:=Vector2i(spring)+Vector2i(dx,dz)
+			var box:=Rect2i(origin,size)
+			if v.world_grid.reason(box)!="": continue
+			var score:=Vector2(origin+Vector2i(2,1)).distance_squared_to(spring+Vector2(shoreline.side*4,4))
+			if score>=best: continue
+			var dry:=true
+			for x in range(origin.x,box.end.x):
+				for z in range(origin.y,box.end.y):
+					var p:=Vector2(x,z)
+					if shoreline.height_at(p)<7.19 or shoreline.distance_at(p)<1.45: dry=false
+			if dry:
+				best=score
+				lookout=box
 
 func free_land(v,p: Vector2,margin: float) -> bool:
 	if shoreline.distance_at(p)<margin: return false
 	var box:=Rect2i(Vector2i(p.round())-Vector2i.ONE,Vector2i(3,3))
-	if DISTRICTS[id][2].intersects(box): return false
+	if lookout.intersects(box) or DISTRICTS[id][2].intersects(box): return false
 	for saved in protected:
 		if saved.intersects(box): return false
 	return v.world_grid.reason(box)==""
@@ -234,3 +302,22 @@ func build_trails(v) -> void:
 	var far_x:=bridge.end.x if s>0 else bridge.position.x
 	trail(v,hub,Vector2(s*5,-10),Vector2(near_x-s*7,z),Vector2(near_x,z),1.45)
 	trail(v,Vector2(far_x,z),Vector2(far_x+s*4,z),Vector2(s*31,z+3),Vector2(s*30,z+7),1.25)
+
+# Compute once after scenery and bank collision are in place. The river,
+# cliff gradient and trunks determine where a regenerating pickup can land.
+func mark_accessible(grid) -> void:
+	var arrival:=Vector2i(0,6)
+	var queue: Array[Vector2i]=[arrival]
+	accessible[arrival]=true
+	var i:=0
+	while i<queue.size():
+		var cell:=queue[i]
+		i+=1
+		for dir: Vector2i in [Vector2i.RIGHT,Vector2i.DOWN,Vector2i.LEFT,Vector2i.UP]:
+			var n:=cell+dir
+			if accessible.has(n) or not grid.bounds.has_point(n): continue
+			if grid.reserved.get(n,"") in ["Árvore","Edifício","Construção ou obstáculo"]: continue
+			if absf(shoreline.height_at(n)-shoreline.height_at(cell))>.88: continue
+			if shoreline.distance_at(n)<.3 and not bridge.has_point(Vector2(n)): continue
+			accessible[n]=true
+			queue.append(n)

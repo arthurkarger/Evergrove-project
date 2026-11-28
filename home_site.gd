@@ -263,10 +263,14 @@ func begin(id: String) -> void:
 	var area: Rect2i=state.area(world.life.room)
 	cell=Grid.world_to_cell(player_flat()) if world.life.room==-1 else area.position+area.size/2
 	pan=base(world.life.room)+Vector3(cell.x,0,cell.y)
+	bound_pan()
 	var plane := PlaneMesh.new()
 	plane.size=Vector2(area.size)
 	grid.mesh=plane
 	grid.position=base(world.life.room)+Vector3(area.position.x+(area.size.x-1)*0.5,0.18,area.position.y+(area.size.y-1)*0.5)
+	if world.life.room==-1 and world.village.shoreline.relief:
+		grid.mesh=world.village.shoreline.relief.land_mesh
+		grid.position=Vector3.UP*.08
 	shader_mat.set_shader_parameter("squares",Vector2(area.size))
 	grid.show()
 	reset_selection(id)
@@ -308,7 +312,7 @@ func update_preview() -> void:
 	var center := Grid.cell_center(cell,size)
 	var plane := footprint_mesh.mesh as PlaneMesh
 	plane.size=Vector2(size)-Vector2.ONE*0.035
-	footprint_mesh.position=base(world.life.room)+Vector3(center.x,0.20,center.y)
+	footprint_mesh.position=base(world.life.room)+Vector3(center.x,ghost.position.y-base(world.life.room).y-.05,center.y)
 	footprint_material.albedo_color=Color(0.27,0.9,0.36,0.62) if valid else Color(0.94,0.16,0.18,0.65)
 	footprint_mesh.show()
 
@@ -343,6 +347,21 @@ func ray(screen: Vector2) -> Vector3:
 	var camera: Camera3D=world.camera
 	var start := camera.project_ray_origin(screen)
 	var dir := camera.project_ray_normal(screen)
+	if world.life.room==-1 and world.village.shoreline.relief:
+		var end_distance: float=(grid.position.y-start.y)/dir.y
+		var t:=0.
+		while t<end_distance:
+			var point:=start+dir*t
+			if point.y<=state.world_grid.height_at(Vector2(point.x,point.z))+grid.position.y:
+				var lo:=maxf(t-.35,0.)
+				var hi:=t
+				for i in 8:
+					var mid:=(lo+hi)*.5
+					point=start+dir*mid
+					if point.y>state.world_grid.height_at(Vector2(point.x,point.z))+grid.position.y: lo=mid
+					else: hi=mid
+				return start+dir*hi
+			t+=.35
 	return start+dir*((grid.position.y-start.y)/dir.y)
 
 func bound_pan() -> void:
@@ -350,6 +369,8 @@ func bound_pan() -> void:
 	var origin:=base(world.life.room)
 	pan.x=clampf(pan.x,origin.x+area.position.x-2,origin.x+area.end.x+1)
 	pan.z=clampf(pan.z,origin.z+area.position.y-2,origin.z+area.end.y+1)
+
+	if world.life.room==-1: pan.y=state.world_grid.height_at(Vector2(pan.x,pan.z))
 
 func camera_step(delta: float) -> void:
 	blend=move_toward(blend,1.0 if active else 0.0,delta*2.8)
